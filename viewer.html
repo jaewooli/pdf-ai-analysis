@@ -4,35 +4,76 @@
   <meta charset="UTF-8">
   <title>AI PDF Viewer</title>
   <style>
-    body { margin: 0; background-color: #333; display: flex; flex-direction: column; align-items: center; }
-    #header { width: 100%; background: #222; color: white; padding: 10px; text-align: center; }
-    #viewerContainer { width: 100%; height: calc(100vh - 40px); overflow-y: auto; text-align: center; position: relative; }
+    body { margin: 0; background-color: #333; display: flex; flex-direction: column; align-items: center; height: 100vh; overflow: hidden; }
     
-    /* PDF 페이지 캔버스와 하이라이트 컨테이너 */
-    .pdf-page-container {
-      position: relative;
-      display: inline-block;
-      margin: 20px auto;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-      background: white;
+    #header { 
+      width: 100%; background: #222; color: white; padding: 0 20px; 
+      box-sizing: border-box; display: flex; justify-content: space-between; 
+      align-items: center; height: 50px; z-index: 100;
     }
+    .header-title { font-weight: bold; font-size: 16px; }
+    
+    .view-controls { display: flex; gap: 8px; }
+    .view-btn { 
+      background: #444; color: #ddd; border: 1px solid #666; 
+      padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.2s;
+    }
+    .view-btn:hover { background: #555; color: white; }
+    .view-btn.active { background: #007bff; border-color: #0056b3; color: white; font-weight: bold; }
+    
+    /* 강조된 AI 분석 버튼 */
+    .ai-btn { background: #10a37f; color: white; border: none; font-weight: bold; margin-left: 10px; }
+    .ai-btn:hover { background: #0b8a6a; }
+
+    /* 🚨 메인 컨텐츠 영역 (사이드바 + 뷰어) */
+    #mainContent { display: flex; width: 100%; height: calc(100vh - 50px); overflow: hidden; }
+
+    /* 📑 썸네일 사이드바 디자인 */
+    #sidebar { 
+      width: 220px; background: #2a2a2a; border-right: 1px solid #111; 
+      overflow-y: auto; padding: 15px 10px; box-sizing: border-box;
+      display: none; /* 기본적으로 숨김 */
+      flex-direction: column; gap: 15px; align-items: center;
+    }
+    #sidebar.active { display: flex; }
+    
+    /* 썸네일 아이템 디자인 */
+    .thumbnail-container { cursor: pointer; text-align: center; color: #aaa; font-size: 12px; transition: 0.2s; width: 100%; }
+    .thumbnail-container:hover { transform: scale(1.03); color: white; }
+    .thumbnail-canvas { width: 100%; box-shadow: 0 2px 5px rgba(0,0,0,0.8); background: white; margin-bottom: 5px; }
+
+    /* 기존 뷰어 영역 */
+    #viewerContainer { 
+      flex: 1; overflow-y: auto; padding: 30px; box-sizing: border-box;
+      display: grid; justify-content: center; align-content: start;
+    }
+    #viewerContainer.layout-single { grid-template-columns: max-content; gap: 30px; }
+    #viewerContainer.layout-double { grid-template-columns: repeat(2, max-content); gap: 30px 50px; }
+    @media (max-width: 1400px) { #viewerContainer.layout-double { grid-template-columns: max-content; } }
+
+    .pdf-page-container { position: relative; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
     canvas { display: block; }
-    
-    /* 하이라이트 박스 디자인 */
-    .highlight-box {
-      position: absolute;
-      background-color: rgba(255, 223, 0, 0.4);
-      border: 2px solid #ffcc00;
-      border-radius: 3px;
-      pointer-events: none; /* 클릭 방해 금지 */
-      z-index: 10;
-      transition: opacity 0.5s ease-out;
-    }
+    .highlight-box { position: absolute; background-color: rgba(255, 235, 59, 0.5); pointer-events: none; z-index: 10; transition: opacity 0.5s ease-out; }
+    h3 { grid-column: 1 / -1; text-align: center; font-weight: normal; }
   </style>
 </head>
 <body>
-  <div id="header">PDF AI Analyzer Viewer</div>
-  <div id="viewerContainer"></div>
+  <div id="header">
+    <div class="header-title">PDF AI Analyzer Viewer</div>
+    <div class="view-controls">
+      <button id="toggleSidebarBtn" class="view-btn ">📑 썸네일 열기</button>
+      <button id="btnSingleView" class="view-btn active">📄 1장씩 보기</button>
+      <button id="btnDoubleView" class="view-btn ">📖 2장씩 보기</button>
+      <button id="openSidePanelBtn" class="view-btn ai-btn">🤖 AI 분석 열기</button>
+    </div>
+  </div>
+  
+  <div id="mainContent">
+    <div id="sidebar"></div>
+    
+    <div id="viewerContainer" class="layout-single"></div>
+  </div>
+  
   <script type="module" src="viewer.js"></script>
 </body>
 </html>

@@ -6,20 +6,18 @@
   "permissions": [
     "activeTab",
     "sidePanel",
-    "webNavigation",
-    "tabs",
     "scripting",
-    "storage"
+    "storage",
+    "webNavigation" 
   ],
   "host_permissions": [
-    "<all_urls>"
+    "http://localhost:11434/*",
+    "https://api.openai.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "file:///*"
   ],
   "background": {
     "service_worker": "background.js"
-  },
-  "options_ui": {
-    "page": "options.html",
-    "open_in_tab": true
   },
   "action": {
     "default_title": "분석 패널 열기",
@@ -30,7 +28,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["viewer.html", "lib/*"],
+      "resources": ["viewer.html", "lib/*", "instruction.txt"],
       "matches": ["<all_urls>"]
     }
   ]

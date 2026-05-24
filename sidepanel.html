@@ -3,33 +3,78 @@
 <head>
   <meta charset="UTF-8">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 16px; margin: 0; background: #f9f9f9; }
-    h2 { font-size: 18px; margin-top: 0; }
+    body { font-family: -apple-system, sans-serif; padding: 15px; margin: 0; background: #f9f9f9; color: #333; }
+    .config-content { display: none; margin-bottom: 15px; background: #eee; padding: 10px; border-radius: 6px; }
+    .config-content.active { display: block; }
+    .form-group { margin-bottom: 10px; }
+    .form-group label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px; }
+    .form-group select, .form-group input { width: 100%; padding: 6px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+    .action-btn { width: 100%; padding: 12px; background: #10a37f; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
+    .action-btn:hover { background: #0b8a6a; }
+    
     .card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     
-    .sentence { 
-      padding: 8px; border-radius: 6px; cursor: pointer; transition: all 0.2s; 
-      border-left: 3px solid transparent; margin-bottom: 6px; font-size: 14px; line-height: 1.5;
-    }
-    .sentence:hover { background-color: #f0f7ff; border-left: 3px solid #007bff; }
+    /* 🚨 1. 마크다운 렌더링용 스타일 */
+    .markdown-body { font-size: 13px; line-height: 1.6; }
+    .markdown-body h1, .markdown-body h2, .markdown-body h3 { margin-top: 15px; margin-bottom: 8px; color: #111; }
+    .markdown-body h1 { font-size: 18px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+    .markdown-body h2 { font-size: 16px; }
+    .markdown-body h3 { font-size: 14px; }
+    .list-item { margin-left: 10px; margin-bottom: 6px; }
     
-    button { 
-      width: 100%; padding: 12px; background: #28a745; color: white; border: none; 
-      border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 20px;
+    /* 🚨 2. 원문 텍스트 대신 보여줄 돋보기 버튼 스타일 */
+    .clickable-quote {
+      display: inline-block;
+      background-color: #fff3cd;
+      color: #856404;
+      cursor: pointer;
+      border: 1px solid #ffeeba;
+      transition: background-color 0.2s;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: bold;
+      margin-top: 4px;
+      margin-left: 5px;
     }
-    button:hover { background: #218838; }
+    .clickable-quote:hover { background-color: #ffe8a1; }
   </style>
 </head>
 <body>
-  <h2>문서 분석 결과</h2>
-  <button id="analyzeBtn">현재 문서 요약하기</button>
-  
-  <div id="summaryArea">
-    <div class="card" style="color: #666; text-align: center; font-size: 13px;">
-      요약 버튼을 누르거나 결과를 기다려주세요.
-    </div>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+    <h2 style="margin: 0; font-size: 18px;">🤖 문서 분석</h2>
+    <button id="toggleConfigBtn" style="background:none; border:none; color:#007bff; cursor:pointer; font-size: 14px;">⚙️ 설정</button>
   </div>
   
+  <div id="configContent" class="config-content">
+    <div class="form-group">
+      <label>분석 AI 모델 선택</label>
+      <select id="ai-selector">
+        <option value="local">Local LM (노트북)</option>
+        <option value="openai">OpenAI (GPT-4o)</option>
+        <option value="gemini">Google Gemini</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>OpenAI API Key</label>
+      <input type="password" id="openai-key" placeholder="sk-...">
+    </div>
+    <div class="form-group">
+      <label>Gemini API Key</label>
+      <input type="password" id="gemini-key" placeholder="AIza...">
+    </div>
+    <div style="display: flex; align-items: center;">
+      <button id="saveConfigBtn" style="padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">저장</button>
+      <span id="status" style="color: green; font-size: 12px; margin-left: 10px;"></span>
+    </div>
+  </div>
+
+  <button id="analyzeBtn" class="action-btn">현재 문서 요약하기</button>
+  
+  <div id="summaryArea">
+    <div class="card" style="color: #666; text-align: center;">요약 버튼을 눌러주세요.</div>
+  </div>
+
   <script src="sidepanel.js"></script>
 </body>
 </html>
