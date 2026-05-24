@@ -159,7 +159,7 @@ document.getElementById('analyzeBtn').addEventListener('click', () => {
                     // 🔥 최종 출력
                     // ============================================
 
-                    renderFinalAnalysis(secondResponse.result,elapsedSeconds);
+                    renderFinalAnalysis(processedResult,elapsedSeconds);
                   }
                 );
               }
