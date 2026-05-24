@@ -56,7 +56,6 @@ document.getElementById('analyzeBtn').addEventListener('click', () => {
       chrome.tabs.sendMessage(currentTabId, { action: 'GET_PDF_FILE' }, (fileResponse) => {
         const pdfBase64 = fileResponse && fileResponse.base64 ? fileResponse.base64 : null;
 
-        // ... (위쪽 코드 동일) ...
 
         chrome.runtime.sendMessage({ action: 'FETCH_SUMMARY', text: fullText, pdfBase64: pdfBase64 }, (aiResponse) => {
           clearInterval(timerInterval);
@@ -92,7 +91,9 @@ document.getElementById('analyzeBtn').addEventListener('click', () => {
             .replace(/^\s*-\s+(.*$)/gim, '<div class="list-item">• $1</div>')
             // 불필요한 연속 줄바꿈 제거 후 br 태그로 변환
             .replace(/\n{2,}/g, '\n')
-            .replace(/\n/gim, '<br>');
+            .replace(/\n/gim, '<br>')
+            .replace(/```markdown/,'')
+            .replace(/```/,'');
 
           // 3. 최종 결과를 화면에 출력
           summaryArea.innerHTML = `

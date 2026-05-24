@@ -62,7 +62,7 @@ async function extractTextWithCoords(page, pageNum) {
 async function renderPDF(url) {
   try {
     viewerContainer.innerHTML = '<h3 style="color:white; margin-top:20px;">PDF를 불러오는 중입니다...</h3>';
-    sidebar.innerHTML = ''; // 사이드바 초기화
+    sidebar.innerHTML = ''; 
     
     pdfDocument = await pdfjsLib.getDocument(url).promise;
     viewerContainer.innerHTML = ''; 
@@ -70,9 +70,9 @@ async function renderPDF(url) {
     
     for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
       const page = await pdfDocument.getPage(pageNum);
-      
-      // [메인 캔버스 렌더링]
       const viewport = page.getViewport({ scale: scale });
+
+      // 1. 메인 뷰어용 컨테이너 생성
       const pageContainer = document.createElement('div');
       pageContainer.className = 'pdf-page-container';
       pageContainer.dataset.pageNumber = pageNum;
@@ -83,14 +83,15 @@ async function renderPDF(url) {
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       const ctx = canvas.getContext('2d');
+
+      // 🚨 [여기가 핵심!] 실제 페이지 렌더링 로직
       await page.render({ canvasContext: ctx, viewport: viewport }).promise;
       pageContainer.appendChild(canvas);
       viewerContainer.appendChild(pageContainer);
 
-      // 🖼️ [썸네일 캔버스 렌더링 추가]
-      const thumbScale = 180 / viewport.width; // 썸네일 가로를 180px로 맞춤
+      // 2. 썸네일 생성 로직
+      const thumbScale = 180 / viewport.width; 
       const thumbViewport = page.getViewport({ scale: thumbScale });
-      
       const thumbContainer = document.createElement('div');
       thumbContainer.className = 'thumbnail-container';
       
@@ -98,124 +99,91 @@ async function renderPDF(url) {
       thumbCanvas.className = 'thumbnail-canvas';
       thumbCanvas.width = thumbViewport.width;
       thumbCanvas.height = thumbViewport.height;
-      const thumbCtx = thumbCanvas.getContext('2d');
-      
-      // 메인 렌더링 직후 작은 캔버스에 한 번 더 렌더링
-      await page.render({ canvasContext: thumbCtx, viewport: thumbViewport }).promise;
+      await page.render({ canvasContext: thumbCanvas.getContext('2d'), viewport: thumbViewport }).promise;
       
       const thumbLabel = document.createElement('div');
-      thumbLabel.textContent = `${pageNum} / ${pdfDocument.numPages}`;
-      
+      thumbLabel.textContent = `${pageNum} / ${pdfDocument.numPages}쪽`;
       thumbContainer.appendChild(thumbCanvas);
       thumbContainer.appendChild(thumbLabel);
       
-      // 썸네일 클릭 시 해당 페이지로 스무스하게 스크롤 이동!
-      thumbContainer.addEventListener('click', () => {
-        pageContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      thumbContainer.addEventListener('click', () => { 
+        pageContainer.scrollIntoView({ behavior: 'smooth', block: 'start' }); 
       });
       sidebar.appendChild(thumbContainer);
 
-      // 텍스트 데이터 추출
+      // 3. 텍스트 데이터 추출
       const pageData = await extractTextWithCoords(page, pageNum);
       extractedDocumentData.push(...pageData);
     }
-    
-    normalizedFullText = "";
-    charToItemMap = [];
-    extractedDocumentData.forEach(item => {
-      const normText = item.text.replace(/\s+/g, '').toLowerCase(); 
-      for(let i=0; i < normText.length; i++) {
-        normalizedFullText += normText[i];
-        charToItemMap.push(item); 
-      }
-    });
 
+    // 🔥 [핵심 2] 원본 데이터 Base64 추출 (이게 있어야 AI가 PDF를 봅니다)
     const pdfData = await pdfDocument.getData();
     let binary = '';
-    for (let i = 0; i < pdfData.byteLength; i++) {
-      binary += String.fromCharCode(pdfData[i]);
-    }
+    for (let i = 0; i < pdfData.byteLength; i++) { binary += String.fromCharCode(pdfData[i]); }
     globalPdfBase64 = window.btoa(binary);
 
   } catch (error) {
     console.error('PDF 로드 실패:', error);
-    viewerContainer.innerHTML = '<h3 style="color:red; margin-top:20px;">PDF를 열 수 없습니다.</h3>';
   }
 }
-// ... 이하 생략 (기존 drawExactHighlight 등의 함수 유지) ...
 
-// 🔥 [새로운 기능] 정확한 텍스트에만 진짜 형광펜처럼 여러 박스 그리기
+// 🔥 [핵심 3] 퍼지 매칭 하이라이트 (스마트 앵커 폴백)
 function drawExactHighlight(sourceText) {
-  // 1. 찾을 텍스트 정규화
-  const target = sourceText.replace(/\s+/g, '').toLowerCase();
-  const startIndex = normalizedFullText.indexOf(target);
+  // 동일하게 정규화
+  const target = sourceText.normalize('NFKC').toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
+  if (!target) return;
+
+  let startIndex = normalizedFullText.indexOf(target);
+  let matchLength = target.length;
+
+  // 100% 일치가 없으면, 앞부분 20글자 + 뒷부분 20글자로 매칭 시도
+  if (startIndex === -1 && target.length > 40) {
+    const prefix = target.substring(0, 20);
+    const suffix = target.substring(target.length - 20);
+    const pIdx = normalizedFullText.indexOf(prefix);
+    const sIdx = normalizedFullText.lastIndexOf(suffix);
+    if (pIdx !== -1 && sIdx !== -1 && sIdx > pIdx) {
+      startIndex = pIdx;
+      matchLength = (sIdx + suffix.length) - pIdx;
+    }
+  }
 
   if (startIndex === -1) {
-    alert("원문에서 해당 텍스트를 찾을 수 없습니다.");
+    alert("하이라이트 위치를 찾을 수 없습니다. (원문과 불일치)(원문: "+sourceText+")");
     return;
   }
 
-  const endIndex = startIndex + target.length;
-  const matchedItems = new Set(); // 중복 방지를 위한 Set
-
-  // 2. 해당 글자 인덱스에 속하는 원본 텍스트 조각들을 모두 모음
-  for(let i = startIndex; i < endIndex; i++) {
-    matchedItems.add(charToItemMap[i]);
+  const matchedItems = new Set();
+  for(let i = startIndex; i < startIndex + matchLength; i++) {
+    if(charToItemMap[i]) matchedItems.add(charToItemMap[i]);
   }
 
-  // 3. 페이지별로 아이템 그룹화
+  document.querySelectorAll('.highlight-box').forEach(el => el.remove());
   const itemsByPage = {};
   matchedItems.forEach(item => {
     if(!itemsByPage[item.pageNumber]) itemsByPage[item.pageNumber] = [];
     itemsByPage[item.pageNumber].push(item);
   });
 
-  // 기존 하이라이트 제거
-  document.querySelectorAll('.highlight-box').forEach(el => el.remove());
-
-  let firstPage = null;
-
-  // 4. 찾은 조각들마다 각각 하이라이트 박스 생성 (진짜 형광펜 효과)
   Object.keys(itemsByPage).forEach(pageNum => {
-    if(!firstPage) firstPage = pageNum;
     const pageContainer = document.querySelector(`.pdf-page-container[data-page-number="${pageNum}"]`);
     if(!pageContainer) return;
-
     pdfDocument.getPage(Number(pageNum)).then(page => {
       const viewport = page.getViewport({ scale: scale });
-      
       itemsByPage[pageNum].forEach(item => {
         const rect = viewport.convertToViewportRectangle(item.coords);
-        const [left, top, right, bottom] = rect;
-        const width = Math.abs(right - left);
-        const height = Math.abs(bottom - top);
-        const renderTop = Math.min(top, bottom);
-
         const highlight = document.createElement('div');
         highlight.className = 'highlight-box';
-        highlight.style.left = `${left}px`;
-        highlight.style.top = `${renderTop}px`;
-        highlight.style.width = `${width}px`;
-        highlight.style.height = `${height}px`;
-        // 기존 테두리를 없애고 배경색만 강조하여 진짜 글씨에 친 형광펜처럼 보이게 함
-        highlight.style.border = 'none'; 
+        highlight.style.left = `${rect[0]}px`;
+        highlight.style.top = `${Math.min(rect[1], rect[3])}px`;
+        highlight.style.width = `${Math.abs(rect[2] - rect[0])}px`;
+        highlight.style.height = `${Math.abs(rect[3] - rect[1])}px`;
         highlight.style.backgroundColor = 'rgba(255, 235, 59, 0.5)';
-        
         pageContainer.appendChild(highlight);
-
-        setTimeout(() => {
-          highlight.style.opacity = '0';
-          setTimeout(() => highlight.remove(), 500);
-        }, 3000);
+        setTimeout(() => highlight.remove(), 3000);
       });
     });
   });
-
-  // 5. 첫 번째 매칭된 페이지로 스크롤
-  if(firstPage) {
-    const targetPage = document.querySelector(`.pdf-page-container[data-page-number="${firstPage}"]`);
-    targetPage.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
 }
 
 // ==========================================
