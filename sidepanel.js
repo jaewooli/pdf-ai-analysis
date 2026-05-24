@@ -56,6 +56,8 @@ document.getElementById('analyzeBtn').addEventListener('click', () => {
       chrome.tabs.sendMessage(currentTabId, { action: 'GET_PDF_FILE' }, (fileResponse) => {
         const pdfBase64 = fileResponse && fileResponse.base64 ? fileResponse.base64 : null;
 
+        // ... (위쪽 코드 동일) ...
+
         chrome.runtime.sendMessage({ action: 'FETCH_SUMMARY', text: fullText, pdfBase64: pdfBase64 }, (aiResponse) => {
           clearInterval(timerInterval);
 
@@ -66,27 +68,33 @@ document.getElementById('analyzeBtn').addEventListener('click', () => {
 
           let rawResult = aiResponse.result;
 
-          // 🔥 1. "원문 근거" 텍스트를 숨기고 [🔍 원문 하이라이트] 버튼으로 완벽 치환
-          // (정규식을 아주 유연하게 짜서 마크다운 기호가 붙어있어도 텍스트만 정확히 날려버립니다)
+          // 🔥 1. 가장 강력한 "원문 근거" 정규식 적용
+          // \*\*원문 근거\*\* 부터 다음 항목(- )이나 다음 제목(#), 또는 끝($)이 나올 때까지 모조리 캡처합니다.
           let processedResult = rawResult.replace(
-            /(?:-\s*)?\*\*원문 근거\*\*\s*:\s*"?([^"\n]+)"?/g,
+            /(?:-\s*)?\*\*원문\s*근거\*\*\s*:\s*([\s\S]*?)(?=\n\s*- |\n\s*#|$)/g,
             (match, quoteText) => {
-              const safeQuote = quoteText.replace(/"/g, '&quot;');
-              // 실제 긴 문장은 유저에게 안 보이고 이 버튼 하나만 남습니다.
-              return `<span class="clickable-quote" data-quote="${safeQuote}">🔍 원문 하이라이트</span>`;
+              // 캡처한 원문 앞뒤의 공백, 큰따옴표, 작은따옴표를 모두 깔끔하게 제거
+              let cleanQuote = quoteText.replace(/^["“”'‘\s]+|["“”'’\s]+$/g, '');
+              
+              // HTML 속성에 넣기 위해 따옴표들을 안전한 기호로 치환 (버그 방지)
+              let safeQuote = cleanQuote.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                
+              return `<div style="margin-top: 4px;"><span class="clickable-quote" data-quote="${safeQuote}">🔍 원문 하이라이트</span></div>`;
             }
           );
 
-          // 🔥 2. 깔끔한 마크다운 파서 적용 (제목, 볼드체, 리스트, 줄바꿈 렌더링)
+          // 🔥 2. 업그레이드된 마크다운 파서 (줄바꿈 및 리스트 렌더링 최적화)
           processedResult = processedResult
-            .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-            .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-            .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+            .replace(/^###\s+(.*$)/gim, '<h3>$1</h3>')
+            .replace(/^##\s+(.*$)/gim, '<h2>$1</h2>')
+            .replace(/^#\s+(.*$)/gim, '<h1>$1</h1>')
             .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
             .replace(/^\s*-\s+(.*$)/gim, '<div class="list-item">• $1</div>')
+            // 불필요한 연속 줄바꿈 제거 후 br 태그로 변환
+            .replace(/\n{2,}/g, '\n')
             .replace(/\n/gim, '<br>');
 
-          // 3. 화면에 출력
+          // 3. 최종 결과를 화면에 출력
           summaryArea.innerHTML = `
             <div class="card" style="background:#eef7ff; margin-bottom: 10px;">
               ✅ 분석 완료 (소요 시간: <strong>${elapsedSeconds}초</strong>)
@@ -98,6 +106,7 @@ document.getElementById('analyzeBtn').addEventListener('click', () => {
     });
   });
 });
+
 
 // 🔥 클릭 이벤트: 돋보기 버튼을 누르면 원문 텍스트를 뷰어로 전송
 document.getElementById('summaryArea').addEventListener('click', (e) => {
