@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "PDF AI Analyzer Pro",
+  "version": "1.0",
+  "description": "PDF 요약 및 원문 하이라이팅 확장 프로그램",
+  "permissions": [
+    "activeTab",
+    "sidePanel",
+    "webNavigation",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "분석 패널 열기"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["viewer.html", "lib/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

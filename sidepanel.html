@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 16px; margin: 0; background: #f9f9f9; }
+    h2 { font-size: 18px; margin-top: 0; }
+    .card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    
+    .sentence { 
+      padding: 8px; border-radius: 6px; cursor: pointer; transition: all 0.2s; 
+      border-left: 3px solid transparent; margin-bottom: 6px; font-size: 14px; line-height: 1.5;
+    }
+    .sentence:hover { background-color: #f0f7ff; border-left: 3px solid #007bff; }
+    
+    button { 
+      width: 100%; padding: 12px; background: #28a745; color: white; border: none; 
+      border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 20px;
+    }
+    button:hover { background: #218838; }
+  </style>
+</head>
+<body>
+  <h2>문서 분석 결과</h2>
+  <button id="analyzeBtn">현재 문서 요약하기</button>
+  
+  <div id="summaryArea">
+    <div class="card" style="color: #666; text-align: center; font-size: 13px;">
+      요약 버튼을 누르거나 결과를 기다려주세요.
+    </div>
+  </div>
+  
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>AI PDF Viewer</title>
+  <style>
+    body { margin: 0; background-color: #333; display: flex; flex-direction: column; align-items: center; }
+    #header { width: 100%; background: #222; color: white; padding: 10px; text-align: center; }
+    #viewerContainer { width: 100%; height: calc(100vh - 40px); overflow-y: auto; text-align: center; position: relative; }
+    
+    /* PDF 페이지 캔버스와 하이라이트 컨테이너 */
+    .pdf-page-container {
+      position: relative;
+      display: inline-block;
+      margin: 20px auto;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+      background: white;
+    }
+    canvas { display: block; }
+    
+    /* 하이라이트 박스 디자인 */
+    .highlight-box {
+      position: absolute;
+      background-color: rgba(255, 223, 0, 0.4);
+      border: 2px solid #ffcc00;
+      border-radius: 3px;
+      pointer-events: none; /* 클릭 방해 금지 */
+      z-index: 10;
+      transition: opacity 0.5s ease-out;
+    }
+  </style>
+</head>
+<body>
+  <div id="header">PDF AI Analyzer Viewer</div>
+  <div id="viewerContainer"></div>
+  <script type="module" src="viewer.js"></script>
+</body>
+</html>
