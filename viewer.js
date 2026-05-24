@@ -122,9 +122,32 @@ async function renderPDF(url) {
     for (let i = 0; i < pdfData.byteLength; i++) { binary += String.fromCharCode(pdfData[i]); }
     globalPdfBase64 = window.btoa(binary);
 
+    // 🔥 [추가] 하이라이트 검색을 위한 인덱스 생성
+    buildSearchIndex();
+
   } catch (error) {
     console.error('PDF 로드 실패:', error);
   }
+}
+
+// 🔍 하이라이트 검색용 인덱스 생성 함수
+function buildSearchIndex() {
+  normalizedFullText = "";
+  charToItemMap = [];
+
+  extractedDocumentData.forEach(item => {
+    // 텍스트 정규화 (공백 제거, 소문자화, 특수문자 제거)
+    const normalizedItemText = item.text
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[^a-z0-9가-힣]/g, '');
+
+    for (let i = 0; i < normalizedItemText.length; i++) {
+      normalizedFullText += normalizedItemText[i];
+      charToItemMap.push(item);
+    }
+  });
+  console.log("Search Index built. Length:", normalizedFullText.length);
 }
 
 // 🔥 [핵심 3] 퍼지 매칭 하이라이트 (스마트 앵커 폴백)
@@ -165,12 +188,12 @@ function drawExactHighlight(sourceText) {
     itemsByPage[item.pageNumber].push(item);
   });
 
-  Object.keys(itemsByPage).forEach(pageNum => {
+  Object.keys(itemsByPage).forEach((pageNum, index) => {
     const pageContainer = document.querySelector(`.pdf-page-container[data-page-number="${pageNum}"]`);
     if(!pageContainer) return;
     pdfDocument.getPage(Number(pageNum)).then(page => {
       const viewport = page.getViewport({ scale: scale });
-      itemsByPage[pageNum].forEach(item => {
+      itemsByPage[pageNum].forEach((item, itemIdx) => {
         const rect = viewport.convertToViewportRectangle(item.coords);
         const highlight = document.createElement('div');
         highlight.className = 'highlight-box';
@@ -180,6 +203,12 @@ function drawExactHighlight(sourceText) {
         highlight.style.height = `${Math.abs(rect[3] - rect[1])}px`;
         highlight.style.backgroundColor = 'rgba(255, 235, 59, 0.5)';
         pageContainer.appendChild(highlight);
+
+        // 첫 번째 페이지의 첫 번째 아이템으로 스크롤 이동
+        if (index === 0 && itemIdx === 0) {
+          highlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
         setTimeout(() => highlight.remove(), 3000);
       });
     });
@@ -197,6 +226,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'GET_DOCUMENT_DATA') {
     const optimizedData = mergeTextBlocks(extractedDocumentData);
     sendResponse({ data: optimizedData });
+  }
+
+  if (request.action === 'GET_PDF_FILE') {
+    sendResponse({ base64: globalPdfBase64 });
   }
 });
 // ==========================================

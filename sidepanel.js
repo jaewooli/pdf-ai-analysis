@@ -110,7 +110,9 @@ document.getElementById('analyzeBtn').addEventListener('click', () => {
                 chrome.runtime.sendMessage(
                   {
                     action: 'FETCH_FINAL_SUMMARY',
-                    firstAnalysis: firstAnalysisResult
+                    firstAnalysis: firstAnalysisResult,
+                    text: fullText,
+                    pdfBase64: pdfBase64
                   },
                   (secondResponse) => {
 
@@ -128,38 +130,9 @@ document.getElementById('analyzeBtn').addEventListener('click', () => {
                     let rawResult = secondResponse.result;  
 
                     // ============================================
-                    // 🔥 원문 근거 처리
+                    // 🔥 최종 출력 (processMarkdown에서 모든 처리 담당)
                     // ============================================
-
-                    let processedResult = rawResult.replace(
-                      /(?:-\s*)?\*\*원문\s*근거\*\*\s*:\s*([\s\S]*?)(?=\n\s*- |\n\s*#|$)/g,
-                      (match, quoteText) => {
-
-                        let cleanQuote = quoteText.replace(
-                          /^["“”'‘\s]+|["“”'’\s]+$/g,
-                          ''
-                        );
-
-                        let safeQuote = cleanQuote
-                          .replace(/"/g, '&quot;')
-                          .replace(/'/g, '&#39;');
-
-                        return `
-                          <div style="margin-top: 4px;">
-                            <span 
-                              class="clickable-quote"
-                              data-quote="${safeQuote}">
-                              🔍 원문 하이라이트
-                            </span>
-                          </div>`;
-                      }
-                    );
-
-                    // ============================================
-                    // 🔥 최종 출력
-                    // ============================================
-
-                    renderFinalAnalysis(processedResult,elapsedSeconds);
+                    renderFinalAnalysis(rawResult, elapsedSeconds);
                   }
                 );
               }
@@ -171,12 +144,13 @@ document.getElementById('analyzeBtn').addEventListener('click', () => {
   });
 });
 
-// 🔥 클릭 이벤트: 돋보기 버튼을 누르면 원문 텍스트를 뷰어로 전송
+// 🔥 클릭 이벤트: 돋보기 버튼을 누르면 원문 텍스트를 뷰어로 전송하고 콘솔에 표시
 document.getElementById('summaryArea').addEventListener('click', (e) => {
   if (e.target.classList.contains('clickable-quote')) {
     const quoteText = e.target.getAttribute('data-quote');
     
     if (quoteText) {
+      // 1. PDF 뷰어에 하이라이트 요청 전송
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (!tabs || tabs.length === 0) return;
         chrome.tabs.sendMessage(tabs[0].id, { 
@@ -184,14 +158,42 @@ document.getElementById('summaryArea').addEventListener('click', (e) => {
           text: quoteText 
         });
       });
+
+      // 2. 사이드 패널 하단 콘솔에 원문 텍스트 표시
+      const sourceConsole = document.getElementById('sourceConsole');
+      const sourceTextElement = document.getElementById('sourceText');
+      if (sourceConsole && sourceTextElement) {
+        sourceTextElement.textContent = `"${quoteText}"`;
+        sourceConsole.style.display = 'block';
+        // 분석 영역 하단 여백 추가 (콘솔에 가려지지 않게)
+        document.getElementById('summaryArea').style.marginBottom = '160px';
+      }
     }
   }
+});
+
+// 🔥 콘솔 닫기 버튼 이벤트
+document.getElementById('closeConsoleBtn').addEventListener('click', () => {
+  document.getElementById('sourceConsole').style.display = 'none';
+  document.getElementById('summaryArea').style.marginBottom = '0px';
 });
 
 
 function processMarkdown(rawResult) {
 
+  // 1. 인라인 원문 근거 처리 ( (**원문 근거**: "...") )
+  // 문장 중간이나 끝에 삽입된 근거를 작은 돋보기 아이콘으로 변환
   let processedResult = rawResult.replace(
+    /\(\*\*원문\s*근거\*\*\s*:\s*"(.*?)"\)/g,
+    (match, quoteText) => {
+      let cleanQuote = quoteText.replace(/^["“”'‘\s]+|["“”'’\s]+$/g, '');
+      let safeQuote = cleanQuote.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      return `<span class="clickable-quote" data-quote="${safeQuote}" title="${safeQuote}">🔍</span>`;
+    }
+  );
+
+  // 2. 블록형 원문 근거 처리 (기존 호환성 및 명시적 근거 섹션 대응)
+  processedResult = processedResult.replace(
     /(?:-\s*)?\*\*원문\s*근거\*\*\s*:\s*([\s\S]*?)(?=\n\s*- |\n\s*#|$)/g,
     (match, quoteText) => {
 

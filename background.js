@@ -55,7 +55,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         const result = await secondAiRequest(
-          request.firstAnalysis
+          request.firstAnalysis,
+          request.text,
+          request.pdfBase64
         );
         sendResponse({
           result: result
@@ -89,14 +91,24 @@ async function firstAiRequest(textToAnalyze, pdfBase64) {
     systemPrompt
   );
 }
-async function secondAiRequest(firstAnalysis) {
+async function secondAiRequest(firstAnalysis, fullText, pdfBase64) {
 
   const systemPrompt =
     await loadSystemPrompt("instruction2.txt");
 
+  const { selectedAI = 'local' } =
+    await chrome.storage.local.get('selectedAI');
+
+  // Gemini는 PDF를 직접 볼 수 있으므로 1차 분석 결과만 텍스트로 전달
+  // 그 외 모델은 원본 텍스트를 함께 전달해야 근거를 찾을 수 있음
+  let inputForAI = firstAnalysis;
+  if (selectedAI !== 'gemini') {
+    inputForAI = `[1차 분석 결과]\n${firstAnalysis}\n\n[원본 논문 텍스트]\n${fullText}`;
+  }
+
   return await fetchBySelectedAI(
-    firstAnalysis,
-    null,
+    inputForAI,
+    pdfBase64,
     systemPrompt
   );
 }
@@ -188,7 +200,10 @@ async function callGemini(text, pdfBase64, systemPrompt) {
   };
 
   if (pdfBase64) {
-    payload.contents[0].parts.push({ text: "첨부된 PDF 논문 파일을 제공된 지침 규칙(출력 규칙 및 양식)에 맞춰 완벽하게 분석해줘." });
+    // 텍스트(1차 분석 결과 등)가 있으면 함께 전송
+    if (text) {
+      payload.contents[0].parts.push({ text: text });
+    }
     payload.contents[0].parts.push({
       inline_data: {
         mime_type: "application/pdf",
