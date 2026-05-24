@@ -74,7 +74,7 @@ async function renderPDF(url) {
 
       // 1. 메인 뷰어용 컨테이너 생성
       const pageContainer = document.createElement('div');
-      pageContainer.className = 'pdf-page-container';
+      pageContainer.className = 'page pdf-page-container';
       pageContainer.dataset.pageNumber = pageNum;
       pageContainer.style.width = `${viewport.width}px`;
       pageContainer.style.height = `${viewport.height}px`;
@@ -88,18 +88,46 @@ async function renderPDF(url) {
       await page.render({ canvasContext: ctx, viewport: viewport }).promise;
       pageContainer.appendChild(canvas);
 
-      // 🔥 [추가] 텍스트 레이어 생성 (드래그/선택 가능하게 함)
-      const textLayerDiv = document.createElement('div');
-      textLayerDiv.className = 'textLayer';
-      pageContainer.appendChild(textLayerDiv);
+      // 🔥 [추가] 텍스트 레이어 생성 (비동기로 처리하여 메인 렌더링을 방해하지 않음)
+      (async () => {
+        try {
+          const textLayerDiv = document.createElement('div');
+          textLayerDiv.className = 'textLayer';
+          // [중요] 텍스트 레이어의 크기와 스케일 변수를 설정
+          textLayerDiv.style.width = `${viewport.width}px`;
+          textLayerDiv.style.height = `${viewport.height}px`;
 
-      const textContent = await page.getTextContent();
-      pdfjsLib.renderTextLayer({
-        textContent: textContent,
-        container: textLayerDiv,
-        viewport: viewport,
-        textDivs: []
-      });
+          // PDF.js TextLayer는 내부적으로 --scale-factor 변수를 사용하여 폰트 크기를 결정합니다.
+          textLayerDiv.style.setProperty('--scale-factor', viewport.scale);
+          pageContainer.style.setProperty('--scale-factor', viewport.scale);
+          pageContainer.style.setProperty('--total-scale-factor', viewport.scale);
+
+          pageContainer.appendChild(textLayerDiv);
+
+          const textContent = await page.getTextContent();
+
+          // PDF.js v3+ / v5+ 지원: TextLayer 클래스 사용
+          if (pdfjsLib.TextLayer) {
+            const textLayer = new pdfjsLib.TextLayer({
+              textContentSource: textContent,
+              container: textLayerDiv,
+              viewport: viewport
+            });
+            await textLayer.render();
+            console.log(`Page ${pageNum} text layer rendered via TextLayer class.`);
+          } else if (pdfjsLib.renderTextLayer) {
+            // 하위 호환성 (만약 옛날 방식을 쓴다면)
+            await pdfjsLib.renderTextLayer({
+              textContent: textContent,
+              container: textLayerDiv,
+              viewport: viewport,
+              textDivs: []
+            }).promise;
+          }
+        } catch (e) {
+          console.error(`Page ${pageNum} text layer failed:`, e);
+        }
+      })();
 
       viewerContainer.appendChild(pageContainer);
 

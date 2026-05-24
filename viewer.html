@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>AI PDF Viewer</title>
+  <link rel="stylesheet" href="lib/pdf_viewer.css">
   <style>
     body { margin: 0; background-color: #333; display: flex; flex-direction: column; align-items: center; height: 100vh; overflow: hidden; }
     
@@ -51,8 +52,8 @@
     #viewerContainer.layout-double { grid-template-columns: repeat(2, max-content); gap: 30px 50px; }
     @media (max-width: 1400px) { #viewerContainer.layout-double { grid-template-columns: max-content; } }
 
-    .pdf-page-container { position: relative; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
-    canvas { display: block; }
+    .pdf-page-container { position: relative; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.4); margin: 0 auto; }
+    canvas { display: block; position: absolute; top: 0; left: 0; pointer-events: none !important; z-index: 1; }
     
     /* 🚨 하이라이트 박스 */
     .highlight-box { 
@@ -63,30 +64,23 @@
       transition: opacity 0.5s ease-out; 
     }
 
-    /* 🔥 텍스트 선택 레이어 (Selectable Text) */
+    /* 🔥 텍스트 선택 레이어 (Native CSS 의존) */
     .textLayer {
-      position: absolute;
-      left: 0;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      overflow: hidden;
-      opacity: 1.0; /* 투명하지만 존재함 */
-      line-height: 1.0;
-      z-index: 2;
+      z-index: 5 !important;
+      pointer-events: auto !important;
     }
 
-    .textLayer span {
-      color: transparent;
-      position: absolute;
-      white-space: pre;
-      cursor: text;
-      transform-origin: 0% 0%;
-    }
-
-    /* 선택 시 배경색 */
+    /* 선택 시 배경색 강제 지정 */
     .textLayer ::selection {
-      background: rgba(0, 0, 255, 0.3);
+      background: rgba(0, 0, 255, 0.3) !important;
+      color: transparent !important;
+    }
+
+    /* 캔버스는 마우스 클릭 무시 (텍스트만 선택되게) */
+    canvas {
+      pointer-events: none !important;
+      z-index: 1;
+      position: relative;
     }
 
     h3 { grid-column: 1 / -1; text-align: center; font-weight: normal; }
@@ -106,7 +100,8 @@
   <div id="mainContent">
     <div id="sidebar"></div>
     
-    <div id="viewerContainer" class="layout-single"></div>
+    <!-- pdfViewer 클래스 추가: 공식 css가 작동하기 위한 필수 컨테이너 클래스 -->
+    <div id="viewerContainer" class="pdfViewer layout-single"></div>
   </div>
   
   <script type="module" src="viewer.js"></script>
