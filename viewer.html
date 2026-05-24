@@ -53,7 +53,42 @@
 
     .pdf-page-container { position: relative; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
     canvas { display: block; }
-    .highlight-box { position: absolute; background-color: rgba(255, 235, 59, 0.5); pointer-events: none; z-index: 10; transition: opacity 0.5s ease-out; }
+    
+    /* 🚨 하이라이트 박스 */
+    .highlight-box { 
+      position: absolute; 
+      background-color: rgba(255, 235, 59, 0.5); 
+      pointer-events: none; 
+      z-index: 10; 
+      transition: opacity 0.5s ease-out; 
+    }
+
+    /* 🔥 텍스트 선택 레이어 (Selectable Text) */
+    .textLayer {
+      position: absolute;
+      left: 0;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+      opacity: 1.0; /* 투명하지만 존재함 */
+      line-height: 1.0;
+      z-index: 2;
+    }
+
+    .textLayer span {
+      color: transparent;
+      position: absolute;
+      white-space: pre;
+      cursor: text;
+      transform-origin: 0% 0%;
+    }
+
+    /* 선택 시 배경색 */
+    .textLayer ::selection {
+      background: rgba(0, 0, 255, 0.3);
+    }
+
     h3 { grid-column: 1 / -1; text-align: center; font-weight: normal; }
   </style>
 </head>

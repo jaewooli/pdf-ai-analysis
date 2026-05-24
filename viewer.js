@@ -87,6 +87,20 @@ async function renderPDF(url) {
       // 🚨 [여기가 핵심!] 실제 페이지 렌더링 로직
       await page.render({ canvasContext: ctx, viewport: viewport }).promise;
       pageContainer.appendChild(canvas);
+
+      // 🔥 [추가] 텍스트 레이어 생성 (드래그/선택 가능하게 함)
+      const textLayerDiv = document.createElement('div');
+      textLayerDiv.className = 'textLayer';
+      pageContainer.appendChild(textLayerDiv);
+
+      const textContent = await page.getTextContent();
+      pdfjsLib.renderTextLayer({
+        textContent: textContent,
+        container: textLayerDiv,
+        viewport: viewport,
+        textDivs: []
+      });
+
       viewerContainer.appendChild(pageContainer);
 
       // 2. 썸네일 생성 로직
