@@ -33,81 +33,143 @@ document.addEventListener('DOMContentLoaded', () => {
 document.getElementById('analyzeBtn').addEventListener('click', () => {
   const summaryArea = document.getElementById('summaryArea');
   let elapsedSeconds = 0;
-  
+
   summaryArea.innerHTML = `
     <div class="card" style="text-align: center; line-height: 1.5;">
       문서를 분석 중입니다...<br><br>
-      <strong style="color: #007bff; font-size: 16px;">⏱️ <span id="timerSpan">0</span>초</strong>
+      <strong style="color: #007bff; font-size: 16px;">
+        ⏱️ <span id="timerSpan">0</span>초
+      </strong>
     </div>`;
 
   const timerInterval = setInterval(() => {
     elapsedSeconds++;
+
     const timerSpan = document.getElementById('timerSpan');
-    if (timerSpan) timerSpan.textContent = elapsedSeconds;
+
+    if (timerSpan) {
+      timerSpan.textContent = elapsedSeconds;
+    }
   }, 1000);
 
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (!tabs || tabs.length === 0) return;
+
     const currentTabId = tabs[0].id;
 
-    chrome.tabs.sendMessage(currentTabId, { action: 'GET_DOCUMENT_DATA' }, (textResponse) => {
-      let fullText = textResponse && textResponse.data ? textResponse.data.map(item => item.text).join(' ') : "";
+    // 1. 문서 텍스트 추출
+    chrome.tabs.sendMessage(
+      currentTabId,
+      { action: 'GET_DOCUMENT_DATA' },
+      (textResponse) => {
 
-      chrome.tabs.sendMessage(currentTabId, { action: 'GET_PDF_FILE' }, (fileResponse) => {
-        const pdfBase64 = fileResponse && fileResponse.base64 ? fileResponse.base64 : null;
+        let fullText =
+          textResponse && textResponse.data
+            ? textResponse.data.map(item => item.text).join(' ')
+            : "";
 
+        // 2. PDF 파일 추출
+        chrome.tabs.sendMessage(
+          currentTabId,
+          { action: 'GET_PDF_FILE' },
+          (fileResponse) => {
 
-        chrome.runtime.sendMessage({ action: 'FETCH_SUMMARY', text: fullText, pdfBase64: pdfBase64 }, (aiResponse) => {
-          clearInterval(timerInterval);
+            const pdfBase64 =
+              fileResponse && fileResponse.base64
+                ? fileResponse.base64
+                : null;
 
-          if (!aiResponse || aiResponse.error) {
-            summaryArea.innerHTML = `<div class="card" style="color:red;">에러: ${aiResponse ? aiResponse.error : "통신 실패"}</div>`;
-            return;
-          }
+            // ============================================
+            // 🔥 1차 AI 요청
+            // ============================================
 
-          let rawResult = aiResponse.result;
+            chrome.runtime.sendMessage(
+              {
+                action: 'FETCH_FIRST_ANALYSIS',
+                text: fullText,
+                pdfBase64: pdfBase64
+              },
+              (firstResponse) => {
 
-          // 🔥 1. 가장 강력한 "원문 근거" 정규식 적용
-          // \*\*원문 근거\*\* 부터 다음 항목(- )이나 다음 제목(#), 또는 끝($)이 나올 때까지 모조리 캡처합니다.
-          let processedResult = rawResult.replace(
-            /(?:-\s*)?\*\*원문\s*근거\*\*\s*:\s*([\s\S]*?)(?=\n\s*- |\n\s*#|$)/g,
-            (match, quoteText) => {
-              // 캡처한 원문 앞뒤의 공백, 큰따옴표, 작은따옴표를 모두 깔끔하게 제거
-              let cleanQuote = quoteText.replace(/^["“”'‘\s]+|["“”'’\s]+$/g, '');
-              
-              // HTML 속성에 넣기 위해 따옴표들을 안전한 기호로 치환 (버그 방지)
-              let safeQuote = cleanQuote.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                if (!firstResponse || firstResponse.error) {
+                  clearInterval(timerInterval);
+
+                  summaryArea.innerHTML = `
+                    <div class="card" style="color:red;">
+                      1차 분석 에러:
+                      ${firstResponse ? firstResponse.error : "통신 실패"}
+                    </div>`;
+
+                  return;
+                }
+
+                const firstAnalysisResult = firstResponse.result;
+                renderFirstAnalysis(firstAnalysisResult, elapsedSeconds);
                 
-              return `<div style="margin-top: 4px;"><span class="clickable-quote" data-quote="${safeQuote}">🔍 원문 하이라이트</span></div>`;
-            }
-          );
+                
+                chrome.runtime.sendMessage(
+                  {
+                    action: 'FETCH_FINAL_SUMMARY',
+                    firstAnalysis: firstAnalysisResult
+                  },
+                  (secondResponse) => {
 
-          // 🔥 2. 업그레이드된 마크다운 파서 (줄바꿈 및 리스트 렌더링 최적화)
-          processedResult = processedResult
-            .replace(/^###\s+(.*$)/gim, '<h3>$1</h3>')
-            .replace(/^##\s+(.*$)/gim, '<h2>$1</h2>')
-            .replace(/^#\s+(.*$)/gim, '<h1>$1</h1>')
-            .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
-            .replace(/^\s*-\s+(.*$)/gim, '<div class="list-item">• $1</div>')
-            // 불필요한 연속 줄바꿈 제거 후 br 태그로 변환
-            .replace(/\n{2,}/g, '\n')
-            .replace(/\n/gim, '<br>')
-            .replace(/```markdown/,'')
-            .replace(/```/,'');
+                    clearInterval(timerInterval);
 
-          // 3. 최종 결과를 화면에 출력
-          summaryArea.innerHTML = `
-            <div class="card" style="background:#eef7ff; margin-bottom: 10px;">
-              ✅ 분석 완료 (소요 시간: <strong>${elapsedSeconds}초</strong>)
-            </div>
-            <div class="card markdown-body">${processedResult}</div>
-          `;
-        });
-      });
-    });
+                    if (!secondResponse || secondResponse.error) {
+                      summaryArea.innerHTML = `
+                        <div class="card" style="color:red;">
+                          2차 분석 에러:
+                          ${secondResponse ? secondResponse.error : "통신 실패"}
+                        </div>`;
+                      return;
+                    }
+
+                    let rawResult = secondResponse.result;  
+
+                    // ============================================
+                    // 🔥 원문 근거 처리
+                    // ============================================
+
+                    let processedResult = rawResult.replace(
+                      /(?:-\s*)?\*\*원문\s*근거\*\*\s*:\s*([\s\S]*?)(?=\n\s*- |\n\s*#|$)/g,
+                      (match, quoteText) => {
+
+                        let cleanQuote = quoteText.replace(
+                          /^["“”'‘\s]+|["“”'’\s]+$/g,
+                          ''
+                        );
+
+                        let safeQuote = cleanQuote
+                          .replace(/"/g, '&quot;')
+                          .replace(/'/g, '&#39;');
+
+                        return `
+                          <div style="margin-top: 4px;">
+                            <span 
+                              class="clickable-quote"
+                              data-quote="${safeQuote}">
+                              🔍 원문 하이라이트
+                            </span>
+                          </div>`;
+                      }
+                    );
+
+                    // ============================================
+                    // 🔥 최종 출력
+                    // ============================================
+
+                    renderFinalAnalysis(secondResponse.result,elapsedSeconds);
+                  }
+                );
+              }
+            );
+          }
+        );
+      }
+    );
   });
 });
-
 
 // 🔥 클릭 이벤트: 돋보기 버튼을 누르면 원문 텍스트를 뷰어로 전송
 document.getElementById('summaryArea').addEventListener('click', (e) => {
@@ -125,3 +187,97 @@ document.getElementById('summaryArea').addEventListener('click', (e) => {
     }
   }
 });
+
+
+function processMarkdown(rawResult) {
+
+  let processedResult = rawResult.replace(
+    /(?:-\s*)?\*\*원문\s*근거\*\*\s*:\s*([\s\S]*?)(?=\n\s*- |\n\s*#|$)/g,
+    (match, quoteText) => {
+
+      let cleanQuote = quoteText.replace(
+        /^["“”'‘\s]+|["“”'’\s]+$/g,
+        ''
+      );
+
+      let safeQuote = cleanQuote
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+      return `
+        <div style="margin-top:4px;">
+          <span
+            class="clickable-quote"
+            data-quote="${safeQuote}">
+            🔍 원문 하이라이트
+          </span>
+        </div>`;
+    }
+  );
+
+  processedResult = processedResult
+    .replace(/^###\s+(.*$)/gim, '<h3>$1</h3>')
+    .replace(/^##\s+(.*$)/gim, '<h2>$1</h2>')
+    .replace(/^#\s+(.*$)/gim, '<h1>$1</h1>')
+    .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+    .replace(
+      /^\s*-\s+(.*$)/gim,
+      '<div class="list-item">• $1</div>'
+    )
+    .replace(/\n{2,}/g, '\n')
+    .replace(/\n/gim, '<br>')
+    .replace(/```markdown/, '')
+    .replace(/```/, '');
+
+  return processedResult;
+}
+
+function renderFirstAnalysis(rawText, elapsedSeconds) {
+
+  const summaryArea =
+    document.getElementById('summaryArea');
+
+  summaryArea.innerHTML = `
+    <div class="card"
+      style="
+        background:#fff8e1;
+        margin-bottom:10px;
+      ">
+
+      ⚡ 빠른 분석 완료
+      (<strong>${elapsedSeconds}초</strong>)
+
+      <br><br>
+
+      <small style="color:#666;">
+        현재 더 정교한 분석을 진행 중입니다...
+      </small>
+    </div>
+
+    <div class="card markdown-body">
+      ${processMarkdown(rawText)}
+    </div>
+  `;
+}
+
+function renderFinalAnalysis(rawText, elapsedSeconds) {
+
+  const summaryArea =
+    document.getElementById('summaryArea');
+
+  summaryArea.innerHTML = `
+    <div class="card"
+      style="
+        background:#eef7ff;
+        margin-bottom:10px;
+      ">
+
+      ✅ 최종 분석 완료
+      (<strong>${elapsedSeconds}초</strong>)
+    </div>
+
+    <div class="card markdown-body">
+      ${processMarkdown(rawText)}
+    </div>
+  `;
+}

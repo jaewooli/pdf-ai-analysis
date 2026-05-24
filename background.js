@@ -32,40 +32,110 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     return true;
   }
-  if (request.action === 'FETCH_SUMMARY') {
-    fetchSummary(request.text, request.pdfBase64)
-      .then(result => sendResponse({ result }))
-      .catch(error => sendResponse({ error: error.message }));
-    return true; // 비동기 응답 처리를 위해 true 반환
+  if (request.action === 'FETCH_FIRST_ANALYSIS') {
+
+    (async () => {
+      try {
+        const result = await firstAiRequest(
+          request.text,
+          request.pdfBase64
+        );
+        sendResponse({
+          result: result
+        });
+      } catch (err) {
+        sendResponse({
+          error: err.message
+        });
+      }
+    })();
+    return true;
+  }
+  if (request.action === 'FETCH_FINAL_SUMMARY') {
+    (async () => {
+      try {
+        const result = await secondAiRequest(
+          request.firstAnalysis
+        );
+        sendResponse({
+          result: result
+        });
+      } catch (err) {
+        sendResponse({
+          error: err.message
+        });
+      }
+    })();
+
+    return true;
   }
 });
 
-async function fetchSummary(textToSummarize, pdfBase64) {
-  const { selectedAI = 'local' } = await chrome.storage.local.get('selectedAI');
+// ==========================================
+// 3. 1차 분석 AI 요청
+// ==========================================
 
-  let systemPrompt = "";
-  try {
-    const response = await fetch(chrome.runtime.getURL("instruction.txt"));
-    systemPrompt = await response.text();
-  } catch (error) {
-    console.error("instruction.txt 파일을 읽어오는데 실패했습니다:", error);
-    throw new Error("기본 지침(instruction.txt) 파일을 로드할 수 없습니다.");
-  }
+async function firstAiRequest(textToAnalyze, pdfBase64) {
 
-  try {
-    switch (selectedAI) {
-      case 'local':
-        return await callLocalLM(textToSummarize, systemPrompt);
-      case 'openai':
-        return await callOpenAI(textToSummarize, systemPrompt);
-      case 'gemini':
-        return await callGemini(textToSummarize, pdfBase64, systemPrompt);
-      default:
-        throw new Error("알 수 없는 AI 모델입니다.");
-    }
-  } catch (error) {
-    console.error("AI 요청 실패:", error);
-    throw error;
+  const { selectedAI = 'local' } =
+    await chrome.storage.local.get('selectedAI');
+
+  const systemPrompt =
+    await loadSystemPrompt("instruction1.txt");
+
+  return await fetchBySelectedAI(
+    textToAnalyze,
+    pdfBase64,
+    systemPrompt
+  );
+}
+async function secondAiRequest(firstAnalysis) {
+
+  const systemPrompt =
+    await loadSystemPrompt("instruction2.txt");
+
+  return await fetchBySelectedAI(
+    firstAnalysis,
+    null,
+    systemPrompt
+  );
+}
+async function fetchBySelectedAI(
+  text,
+  pdfBase64,
+  systemPrompt
+) {
+
+  const { selectedAI = 'local' } =
+    await chrome.storage.local.get('selectedAI');
+
+  switch (selectedAI) {
+
+    case 'local':
+
+      return await callLocalLM(
+        text,
+        systemPrompt
+      );
+
+    case 'openai':
+
+      return await callOpenAI(
+        text,
+        systemPrompt
+      );
+
+    case 'gemini':
+
+      return await callGemini(
+        text,
+        pdfBase64,
+        systemPrompt
+      );
+
+    default:
+
+      throw new Error("알 수 없는 AI 모델");
   }
 }
 
@@ -144,3 +214,22 @@ async function callGemini(text, pdfBase64, systemPrompt) {
     throw new Error("Gemini API 응답 형식이 예상과 다릅니다.");
   }
 }
+
+async function loadSystemPrompt(filename) {
+
+  try {
+
+    const response = await fetch(
+      chrome.runtime.getURL(filename)
+    );
+
+    return await response.text();
+
+  } catch (error) {
+
+    console.error(`${filename} 로드 실패`, error);
+
+    throw new Error(`${filename} 파일 로드 실패`);
+  }
+}
+
