@@ -119,8 +119,35 @@ async function fetchBySelectedAI(
   systemPrompt
 ) {
 
-  const { selectedAI = 'local' } =
-    await chrome.storage.local.get('selectedAI');
+  const { selectedAI = 'local', devMode = false } =
+    await chrome.storage.local.get(['selectedAI', 'devMode']);
+
+  // 🔥 [NEW] Dev Mode Mocking Logic
+  if (devMode) {
+    console.log("🛠️ Dev Mode Active: Returning Mock Data");
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
+    
+    // Check if it's 1st or 2nd analysis based on systemPrompt filename logic 
+    // (Actual file loading is done before this, but we can guess from content or just provide a generic mock)
+    if (systemPrompt.includes("목차") || systemPrompt.includes("1차")) {
+      return `### 🛠️ [Mock] 1차 분석 결과
+- **서론**: 이 논문은 AI의 미래에 대해 다룹니다.
+- **방법론**: 다양한 데이터셋을 사용했습니다.
+- **결론**: 성능이 향상되었습니다.
+
+(**원문 근거**: "This paper presents a new approach")`;
+    } else {
+      return `### 🛠️ [Mock] 최종 심층 분석
+이 문서는 인공지능 분야의 획기적인 발전을 설명합니다. 
+주요 특징으로는 효율적인 알고리즘과 방대한 데이터 처리가 있습니다.
+
+#### 주요 포인트
+1. **정확도**: 99% 향상 (**원문 근거**: "achieved 99% accuracy")
+2. **속도**: 2배 빨라짐 (**원문 근거**: "twice as fast as previous models")
+
+결론적으로, 이 기술은 산업 전반에 큰 영향을 미칠 것으로 예상됩니다.`;
+    }
+  }
 
   switch (selectedAI) {
 

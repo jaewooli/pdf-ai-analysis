@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const openaiKeyInput = document.getElementById('openai-key');
   const deepseekKeyInput = document.getElementById('deepseek-key');
   const geminiKeyInput = document.getElementById('gemini-key');
+  const devModeCheckbox = document.getElementById('dev-mode');
   const statusSpan = document.getElementById('status');
 
   // 🔥 [NEW] Toggle Logic for Summary Result
@@ -25,11 +26,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   summaryHeader.addEventListener('click', () => toggleSummary());
 
-  chrome.storage.local.get(['selectedAI', 'openaiApiKey', 'deepseekApiKey', 'geminiApiKey'], (result) => {
+  chrome.storage.local.get(['selectedAI', 'openaiApiKey', 'deepseekApiKey', 'geminiApiKey', 'devMode'], (result) => {
     if (result.selectedAI) aiSelector.value = result.selectedAI;
     if (result.openaiApiKey) openaiKeyInput.value = result.openaiApiKey;
     if (result.deepseekApiKey) deepseekKeyInput.value = result.deepseekApiKey;
     if (result.geminiApiKey) geminiKeyInput.value = result.geminiApiKey;
+    if (result.devMode !== undefined) devModeCheckbox.checked = result.devMode;
   });
 
   // 🔥 [NEW] Check for existing analysis on load
@@ -64,7 +66,8 @@ document.addEventListener('DOMContentLoaded', () => {
       selectedAI: aiSelector.value,
       openaiApiKey: openaiKeyInput.value.trim(),
       deepseekApiKey: deepseekKeyInput.value.trim(),
-      geminiApiKey: geminiKeyInput.value.trim()
+      geminiApiKey: geminiKeyInput.value.trim(),
+      devMode: devModeCheckbox.checked
     }, () => {
       statusSpan.textContent = '저장됨!';
       setTimeout(() => { statusSpan.textContent = ''; }, 2000);
