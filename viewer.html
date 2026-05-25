@@ -1,106 +1,217 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>AI PDF Viewer</title>
+  <title>PDF Viewer</title>
   <link rel="stylesheet" href="lib/pdf_viewer.css">
   <style>
-    body { margin: 0; background-color: #333; display: flex; flex-direction: column; align-items: center; height: 100vh; overflow: hidden; }
+    :root {
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --bg: #0f172a; /* Darker background for PDF space */
+      --header-bg: #1e293b; /* Dark header */
+      --sidebar-bg: #323639; /* Chrome native sidebar gray */
+      --border: #334155;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --radius: 8px;
+    }
+
+    body { 
+      margin: 0; 
+      background-color: var(--bg); 
+      display: flex; 
+      flex-direction: column; 
+      height: 100vh; 
+      overflow: hidden; 
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--text-main);
+    }
     
     #header { 
-      width: 100%; background: #222; color: white; padding: 0 20px; 
-      box-sizing: border-box; display: flex; justify-content: space-between; 
-      align-items: center; height: 50px; z-index: 100;
+      width: 100%; 
+      background: var(--header-bg); 
+      color: var(--text-main); 
+      padding: 0 24px; 
+      box-sizing: border-box; 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+      height: 60px; 
+      z-index: 100;
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
-    .header-title { font-weight: bold; font-size: 16px; }
+    .header-title { font-weight: 800; font-size: 18px; letter-spacing: -0.025em; color: #ffffff; }
     
-    .view-controls { display: flex; gap: 8px; }
+    .view-controls { display: flex; gap: 10px; align-items: center; }
     .view-btn { 
-      background: #444; color: #ddd; border: 1px solid #666; 
-      padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.2s;
+      background: #334155; 
+      color: #cbd5e1; 
+      border: 1px solid var(--border); 
+      padding: 8px 16px; 
+      border-radius: var(--radius); 
+      cursor: pointer; 
+      font-size: 13px; 
+      font-weight: 600;
+      transition: all 0.2s;
     }
-    .view-btn:hover { background: #555; color: white; }
-    .view-btn.active { background: #007bff; border-color: #0056b3; color: white; font-weight: bold; }
+    .view-btn:hover { background: #475569; color: #ffffff; border-color: #64748b; }
+    .view-btn.active { 
+      background: var(--primary); 
+      border-color: var(--primary); 
+      color: white; 
+    }
     
-    /* 강조된 AI 분석 버튼 */
-    .ai-btn { background: #10a37f; color: white; border: none; font-weight: bold; margin-left: 10px; }
-    .ai-btn:hover { background: #0b8a6a; }
+    .ai-btn { 
+      background: var(--primary); 
+      color: white; 
+      border: none; 
+      font-weight: 700; 
+      margin-left: 15px; 
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+    .ai-btn:hover { 
+      background: var(--primary-hover); 
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    }
 
-    /* 🚨 메인 컨텐츠 영역 (사이드바 + 뷰어) */
-    #mainContent { display: flex; width: 100%; height: calc(100vh - 50px); overflow: hidden; }
+    #mainContent { display: flex; width: 100%; height: calc(100vh - 60px); overflow: hidden; }
 
-    /* 📑 썸네일 사이드바 디자인 */
     #sidebar { 
-      width: 220px; background: #2a2a2a; border-right: 1px solid #111; 
-      overflow-y: auto; padding: 15px 10px; box-sizing: border-box;
-      display: none; /* 기본적으로 숨김 */
-      flex-direction: column; gap: 15px; align-items: center;
+      width: 200px; 
+      background: var(--sidebar-bg); 
+      border-right: 1px solid #1a1c1e; 
+      overflow-y: auto; 
+      padding: 16px 0; 
+      box-sizing: border-box;
+      display: none; 
+      flex-direction: column; 
+      gap: 12px; 
+      align-items: center;
+      scrollbar-width: thin;
+      scrollbar-color: #5f6368 transparent;
     }
     #sidebar.active { display: flex; }
     
-    /* 썸네일 아이템 디자인 */
-    .thumbnail-container { cursor: pointer; text-align: center; color: #aaa; font-size: 12px; transition: 0.2s; width: 100%; }
-    .thumbnail-container:hover { transform: scale(1.03); color: white; }
-    .thumbnail-canvas { width: 100%; box-shadow: 0 2px 5px rgba(0,0,0,0.8); background: white; margin-bottom: 5px; }
-
-    /* 기존 뷰어 영역 */
-    #viewerContainer { 
-      flex: 1; overflow-y: auto; padding: 30px; box-sizing: border-box;
-      display: grid; justify-content: center; align-content: start;
+    .thumbnail-container { 
+      cursor: pointer; 
+      text-align: center; 
+      width: 100%; 
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      padding: 8px 0;
+      transition: background 0.1s;
     }
-    #viewerContainer.layout-single { grid-template-columns: max-content; gap: 30px; }
-    #viewerContainer.layout-double { grid-template-columns: repeat(2, max-content); gap: 30px 50px; }
+    
+    .thumbnail-container:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    
+    .thumbnail-wrapper {
+      position: relative;
+      width: 140px; 
+    }
+    
+    .thumbnail-canvas { 
+      width: 100%; 
+      height: auto;
+      background: white; 
+      display: block;
+      border: 1px solid transparent;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      position: relative !important; /* Ensure thumbnails don't float */
+    }
+    
+    .thumbnail-label {
+      font-size: 12px;
+      color: #bdc1c6;
+      font-weight: 500;
+    }
+    
+    .thumbnail-container.active {
+      background: rgba(138, 180, 248, 0.15); /* Light blue highlight */
+    }
+    
+    .thumbnail-container.active .thumbnail-canvas {
+      outline: 2px solid #8ab4f8;
+      outline-offset: 1px;
+    }
+    
+    .thumbnail-container.active .thumbnail-label {
+      color: #8ab4f8;
+    }
+
+    #viewerContainer { 
+      flex: 1; 
+      overflow-y: auto; 
+      padding: 40px; 
+      box-sizing: border-box;
+      display: grid; 
+      justify-content: center; 
+      align-content: start;
+      scrollbar-width: thin;
+      scrollbar-color: #475569 transparent;
+    }
+    #viewerContainer.layout-single { grid-template-columns: max-content; gap: 40px; }
+    #viewerContainer.layout-double { grid-template-columns: repeat(2, max-content); gap: 40px 60px; }
     @media (max-width: 1400px) { #viewerContainer.layout-double { grid-template-columns: max-content; } }
 
-    .pdf-page-container { position: relative; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.4); margin: 0 auto; }
-    canvas { display: block; position: absolute; top: 0; left: 0; pointer-events: none !important; z-index: 1; }
+    .pdf-page-container { 
+      position: relative; 
+      background: white; 
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.2); 
+      margin: 0 auto; 
+      border-radius: 2px;
+    }
+
+    .pdf-page-container canvas { 
+      display: block; 
+      position: absolute; 
+      top: 0; 
+      left: 0; 
+      pointer-events: none !important; 
+      z-index: 1; 
+    }
     
-    /* 🚨 하이라이트 박스 */
     .highlight-box { 
       position: absolute; 
-      background-color: rgba(255, 235, 59, 0.5); 
+      background-color: rgba(99, 102, 241, 0.3); 
+      border-bottom: 2px solid var(--primary);
       pointer-events: none; 
       z-index: 10; 
       transition: opacity 0.5s ease-out; 
     }
 
-    /* 🔥 텍스트 선택 레이어 (Native CSS 의존) */
     .textLayer {
       z-index: 5 !important;
       pointer-events: auto !important;
     }
 
-    /* 선택 시 배경색 강제 지정 */
     .textLayer ::selection {
-      background: rgba(0, 0, 255, 0.3) !important;
+      background: rgba(99, 102, 241, 0.2) !important;
       color: transparent !important;
     }
 
-    /* 캔버스는 마우스 클릭 무시 (텍스트만 선택되게) */
-    canvas {
-      pointer-events: none !important;
-      z-index: 1;
-      position: relative;
-    }
-
-    h3 { grid-column: 1 / -1; text-align: center; font-weight: normal; }
+    h3 { grid-column: 1 / -1; text-align: center; font-weight: 600; color: var(--text-muted); }
   </style>
 </head>
 <body>
   <div id="header">
-    <div class="header-title">PDF AI Analyzer Viewer</div>
+    <div class="header-title">Viewer</div>
     <div class="view-controls">
-      <button id="toggleSidebarBtn" class="view-btn ">📑 썸네일 열기</button>
-      <button id="btnSingleView" class="view-btn active">📄 1장씩 보기</button>
-      <button id="btnDoubleView" class="view-btn ">📖 2장씩 보기</button>
-      <button id="openSidePanelBtn" class="view-btn ai-btn">🤖 AI 분석 열기</button>
+      <button id="toggleSidebarBtn" class="view-btn">Thumbnails</button>
+      <button id="btnSingleView" class="view-btn active">Single Page</button>
+      <button id="btnDoubleView" class="view-btn">Double Page</button>
+      <button id="openSidePanelBtn" class="view-btn ai-btn">Analysis Panel</button>
     </div>
   </div>
   
   <div id="mainContent">
     <div id="sidebar"></div>
-    
-    <!-- pdfViewer 클래스 추가: 공식 css가 작동하기 위한 필수 컨테이너 클래스 -->
     <div id="viewerContainer" class="pdfViewer layout-single"></div>
   </div>
   

@@ -25,6 +25,8 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 // ==========================================
 // 2. 메시지 수신 및 AI 요약 로직
 // ==========================================
+const activeControllers = new Map();
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'OPEN_SIDE_PANEL') {
     if (sender.tab) { // 요청을 보낸 탭(뷰어)에 사이드 패널을 오픈
@@ -32,39 +34,70 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     return true;
   }
+
+  if (request.action === 'STOP_ANALYSIS') {
+    const { url } = request;
+    if (activeControllers.has(url)) {
+      activeControllers.get(url).abort();
+      activeControllers.delete(url);
+      console.log(`Analysis for ${url} aborted.`);
+    }
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (request.action === 'IS_ANALYZING') {
+    sendResponse({ analyzing: activeControllers.has(request.url) });
+    return true;
+  }
+
   if (request.action === 'FETCH_FIRST_ANALYSIS') {
+    const { url, text, pdfBase64 } = request;
+    const controller = new AbortController();
+    activeControllers.set(url, controller);
 
     (async () => {
       try {
         const result = await firstAiRequest(
-          request.text,
-          request.pdfBase64
+          text,
+          pdfBase64,
+          controller.signal
         );
+        activeControllers.delete(url);
         sendResponse({
           result: result
         });
       } catch (err) {
+        activeControllers.delete(url);
         sendResponse({
-          error: err.message
+          error: err.name === 'AbortError' ? 'STOPPED' : err.message
         });
       }
     })();
     return true;
   }
+
   if (request.action === 'FETCH_FINAL_SUMMARY') {
+    const { url, firstAnalysis, text, pdfBase64 } = request;
+    const controller = new AbortController();
+    activeControllers.set(url, controller);
+
     (async () => {
       try {
         const result = await secondAiRequest(
-          request.firstAnalysis,
-          request.text,
-          request.pdfBase64
+          firstAnalysis,
+          text,
+          pdfBase64,
+          controller.signal
         );
+        activeControllers.delete(url);
         sendResponse({
           result: result
         });
       } catch (err) {
+        activeControllers.delete(url);
         sendResponse({
-          error: err.message
+          error: err.name === 'AbortError' ? 'STOPPED' : err.message
         });
       }
     })();
@@ -77,7 +110,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // 3. 1차 분석 AI 요청
 // ==========================================
 
-async function firstAiRequest(textToAnalyze, pdfBase64) {
+async function firstAiRequest(textToAnalyze, pdfBase64, signal) {
 
   const { selectedAI = 'local' } =
     await chrome.storage.local.get('selectedAI');
@@ -89,10 +122,11 @@ async function firstAiRequest(textToAnalyze, pdfBase64) {
   return await fetchBySelectedAI(
     textToAnalyze,
     null, // pdfBase64 제거
-    systemPrompt
+    systemPrompt,
+    signal
   );
 }
-async function secondAiRequest(firstAnalysis, fullText, pdfBase64) {
+async function secondAiRequest(firstAnalysis, fullText, pdfBase64, signal) {
 
   const systemPrompt =
     await loadSystemPrompt("instruction2.txt");
@@ -110,13 +144,15 @@ async function secondAiRequest(firstAnalysis, fullText, pdfBase64) {
   return await fetchBySelectedAI(
     inputForAI,
     pdfBase64,
-    systemPrompt
+    systemPrompt,
+    signal
   );
 }
 async function fetchBySelectedAI(
   text,
   pdfBase64,
-  systemPrompt
+  systemPrompt,
+  signal
 ) {
 
   const { selectedAI = 'local', devMode = false } =
@@ -125,7 +161,13 @@ async function fetchBySelectedAI(
   // 🔥 [NEW] Dev Mode Mocking Logic
   if (devMode) {
     console.log("🛠️ Dev Mode Active: Returning Mock Data");
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(resolve, 1500);
+      signal?.addEventListener('abort', () => {
+        clearTimeout(timeout);
+        reject(new DOMException('Aborted', 'AbortError'));
+      });
+    }); 
     
     // Check if it's 1st or 2nd analysis based on systemPrompt filename logic 
     // (Actual file loading is done before this, but we can guess from content or just provide a generic mock)
@@ -155,21 +197,24 @@ async function fetchBySelectedAI(
 
       return await callLocalLM(
         text,
-        systemPrompt
+        systemPrompt,
+        signal
       );
 
     case 'openai':
 
       return await callOpenAI(
         text,
-        systemPrompt
+        systemPrompt,
+        signal
       );
 
     case 'deepseek':
 
       return await callDeepSeek(
         text,
-        systemPrompt
+        systemPrompt,
+        signal
       );
 
     case 'gemini':
@@ -177,7 +222,8 @@ async function fetchBySelectedAI(
       return await callGemini(
         text,
         pdfBase64,
-        systemPrompt
+        systemPrompt,
+        signal
       );
 
     default:
@@ -186,7 +232,7 @@ async function fetchBySelectedAI(
   }
 }
 
-async function callLocalLM(text, systemPrompt) {
+async function callLocalLM(text, systemPrompt, signal) {
   const response = await fetch("http://localhost:11434/api/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -194,13 +240,14 @@ async function callLocalLM(text, systemPrompt) {
       model: "llama3", 
       prompt: `${systemPrompt}\n\n[분석할 논문 텍스트]\n${text}`,
       stream: false
-    })
+    }),
+    signal
   });
   const data = await response.json();
   return data.response;
 }
 
-async function callOpenAI(text, systemPrompt) {
+async function callOpenAI(text, systemPrompt, signal) {
   const { openaiApiKey } = await chrome.storage.local.get('openaiApiKey');
   if (!openaiApiKey) throw new Error("OpenAI API 키가 설정되지 않았습니다.");
 
@@ -216,14 +263,15 @@ async function callOpenAI(text, systemPrompt) {
         { role: "system", content: systemPrompt },
         { role: "user", content: `다음 텍스트를 분석해줘:\n${text}` }
       ]
-    })
+    }),
+    signal
   });
   const data = await response.json();
   if (data.error) throw new Error(data.error.message);
   return data.choices[0].message.content;
 }
 
-async function callGemini(text, pdfBase64, systemPrompt) {
+async function callGemini(text, pdfBase64, systemPrompt, signal) {
   const { geminiApiKey } = await chrome.storage.local.get('geminiApiKey');
   if (!geminiApiKey) throw new Error("Gemini API 키가 설정되지 않았습니다.");
 
@@ -251,7 +299,8 @@ async function callGemini(text, pdfBase64, systemPrompt) {
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${geminiApiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal
   });
   
   const data = await response.json();
@@ -289,7 +338,7 @@ async function loadSystemPrompt(filename) {
   }
 }
 
-async function callDeepSeek(text, systemPrompt) {
+async function callDeepSeek(text, systemPrompt, signal) {
   const { deepseekApiKey } = await chrome.storage.local.get('deepseekApiKey');
   if (!deepseekApiKey) throw new Error("DeepSeek API 키가 설정되지 않았습니다.");
 
@@ -306,7 +355,8 @@ async function callDeepSeek(text, systemPrompt) {
         { role: "user", content: `다음 텍스트를 분석해줘:\n${text}` }
       ],
       stream: false
-    })
+    }),
+    signal
   });
   
   const data = await response.json();
@@ -315,4 +365,5 @@ async function callDeepSeek(text, systemPrompt) {
   }
   return data.choices[0].message.content;
 }
+
 

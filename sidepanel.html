@@ -3,63 +3,247 @@
 <head>
   <meta charset="UTF-8">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 15px; margin: 0; background: #f8f9fa; color: #333; line-height: 1.5; }
+    :root {
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --success: #10b981;
+      --loading: #8b5cf6;
+      --danger: #ef4444;
+      --radius: 12px;
+    }
+
+    body { 
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+      padding: 20px; 
+      margin: 0; 
+      background: var(--bg); 
+      color: var(--text-main); 
+      line-height: 1.6; 
+      -webkit-font-smoothing: antialiased;
+    }
     
     /* Config Section */
-    .config-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .config-title { margin: 0; font-size: 17px; font-weight: 800; color: #1a1a1b; }
-    .config-content { display: none; margin-bottom: 15px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .config-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .config-title { margin: 0; font-size: 18px; font-weight: 800; color: var(--text-main); letter-spacing: -0.025em; }
+    .config-content { 
+      display: none; 
+      margin-bottom: 20px; 
+      background: var(--card-bg); 
+      padding: 20px; 
+      border-radius: var(--radius); 
+      border: 1px solid var(--border); 
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); 
+    }
     .config-content.active { display: block; }
     
-    .form-group { margin-bottom: 12px; }
-    .form-group label { display: block; font-size: 11px; font-weight: bold; margin-bottom: 4px; color: #6c757d; text-transform: uppercase; }
-    .form-group select, .form-group input { width: 100%; padding: 7px; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 4px; font-size: 13px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .form-group select, .form-group input { 
+      width: 100%; 
+      padding: 10px; 
+      box-sizing: border-box; 
+      border: 1px solid var(--border); 
+      border-radius: 8px; 
+      font-size: 14px; 
+      background: #fdfdfd;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-group select:focus, .form-group input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
     
-    .btn-group { display: flex; gap: 8px; margin-top: 10px; }
-    .secondary-btn { flex: 1; padding: 7px; background: #f1f3f5; border: 1px solid #dee2e6; border-radius: 4px; cursor: pointer; font-size: 12px; color: #495057; font-weight: 600; }
-    .secondary-btn:hover { background: #e9ecef; }
-    .danger-btn { padding: 7px 12px; background: #fff5f5; color: #fa5252; border: 1px solid #ffa8a8; border-radius: 4px; cursor: pointer; font-size: 11px; }
-    .danger-btn:hover { background: #ffe3e3; }
+    .btn-group { display: flex; gap: 10px; margin-top: 15px; }
+    .secondary-btn { 
+      flex: 1; 
+      padding: 10px; 
+      background: #ffffff; 
+      border: 1px solid var(--border); 
+      border-radius: 8px; 
+      cursor: pointer; 
+      font-size: 13px; 
+      color: var(--text-main); 
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .secondary-btn:hover { background: #f1f5f9; }
+    .danger-btn { 
+      padding: 10px 16px; 
+      background: #fef2f2; 
+      color: var(--danger); 
+      border: 1px solid #fee2e2; 
+      border-radius: 8px; 
+      cursor: pointer; 
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .danger-btn:hover { background: #fee2e2; }
 
     /* Main Action */
-    .analyze-trigger { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 14px; margin-bottom: 15px; transition: background 0.2s; }
-    .analyze-trigger:hover { background: #0069d9; }
+    .analyze-trigger { 
+      width: 100%; 
+      padding: 14px; 
+      background: var(--primary); 
+      color: white; 
+      border: none; 
+      border-radius: var(--radius); 
+      font-weight: 700; 
+      cursor: pointer; 
+      font-size: 15px; 
+      margin-bottom: 20px; 
+      transition: transform 0.1s, background 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.39);
+    }
+    .analyze-trigger:hover { 
+      background: var(--primary-hover); 
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.23);
+    }
+    .analyze-trigger:active { transform: scale(0.98); }
 
     /* Analysis Cards */
-    #analysisList { display: flex; flex-direction: column; gap: 12px; }
-    .result-card { background: white; border-radius: 8px; border: 1px solid #dee2e6; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    .card-header { background: #007bff; color: white; padding: 10px 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
-    .card-title { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; margin-right: 10px; }
-    .card-timer { font-size: 11px; opacity: 0.9; margin-right: 8px; }
-    .toggle-icon { font-size: 10px; transition: transform 0.2s; }
+    #analysisList { display: flex; flex-direction: column; gap: 16px; }
+    .result-card { 
+      background: var(--card-bg); 
+      border-radius: var(--radius); 
+      border: 1px solid var(--border); 
+      overflow: hidden; 
+      transition: box-shadow 0.3s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .result-card:hover { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+
+    .card-header { 
+      background: #ffffff; 
+      color: var(--text-main); 
+      padding: 14px 18px; 
+      cursor: pointer; 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-title { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; margin-right: 12px; }
+    .card-timer { font-size: 12px; color: var(--text-muted); font-weight: 500; margin-right: 10px; }
+    .toggle-icon { font-size: 12px; color: var(--text-muted); transition: transform 0.2s; }
+
+    /* Stop Button */
+    .stop-btn {
+      background: var(--danger);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-left: 10px;
+      transition: opacity 0.2s;
+    }
+    .stop-btn:hover { opacity: 0.9; }
     
-    .card-body { padding: 14px; background: white; }
-    .status-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-bottom: 10px; }
-    .status-loading { background: #fff9db; color: #f08c00; }
-    .status-done { background: #ebfbee; color: #2b8a3e; }
-    .status-error { background: #fff5f5; color: #c92a2a; }
+    .card-body { padding: 18px; background: white; }
+    .status-badge { 
+      display: inline-block; 
+      padding: 4px 10px; 
+      border-radius: 20px; 
+      font-size: 11px; 
+      font-weight: 700; 
+      margin-bottom: 14px; 
+      letter-spacing: 0.025em;
+    }
+    .status-loading { 
+      background: #f5f3ff; 
+      color: var(--loading); 
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    .status-done { background: #ecfdf5; color: var(--success); }
+    .status-error { background: #fef2f2; color: var(--danger); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
 
     /* Markdown content */
-    .markdown-body { font-size: 13px; color: #212529; line-height: 1.6; }
-    .markdown-body h3 { margin: 15px 0 8px; font-size: 14px; color: #1a1a1b; border-left: 3px solid #007bff; padding-left: 8px; }
-    .markdown-body strong { color: #000; font-weight: 700; }
-    .list-item { display: flex; margin-bottom: 4px; padding-left: 4px; }
-    .list-dot { margin-right: 6px; color: #007bff; flex-shrink: 0; }
+    .markdown-body { font-size: 14px; color: #334155; line-height: 1.7; }
+    .markdown-body h3 { 
+      margin: 20px 0 10px; 
+      font-size: 15px; 
+      color: var(--text-main); 
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+    }
+    .markdown-body h3::before {
+      content: "";
+      width: 4px;
+      height: 16px;
+      background: var(--primary);
+      border-radius: 2px;
+      margin-right: 10px;
+    }
+    .markdown-body strong { color: var(--text-main); font-weight: 700; }
+    .list-item { display: flex; margin-bottom: 8px; padding-left: 4px; }
+    .list-dot { margin-right: 10px; color: var(--primary); font-weight: 900; flex-shrink: 0; }
 
     /* Floating Evidence Bar */
-    #sourceConsole { display:none; position: fixed; bottom: 0; left: 0; right: 0; background: #fff9db; padding: 12px; border-top: 2px solid #fab005; z-index: 1000; box-shadow: 0 -4px 10px rgba(0,0,0,0.1); max-height: 140px; overflow-y: auto; }
-    .clickable-quote { background: #fff3bf; color: #f08c00; cursor: pointer; border: 1px solid #ffe066; padding: 1px 5px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+    #sourceConsole { 
+      display:none; 
+      position: fixed; 
+      bottom: 20px; 
+      left: 20px; 
+      right: 20px; 
+      background: #ffffff; 
+      padding: 16px; 
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      z-index: 1000; 
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      max-height: 160px; 
+      overflow-y: auto; 
+    }
+    .clickable-quote { 
+      background: #eef2ff; 
+      color: var(--primary); 
+      cursor: pointer; 
+      border: 1px solid #c7d2fe; 
+      padding: 2px 6px; 
+      border-radius: 6px; 
+      font-size: 12px; 
+      font-weight: 700;
+      transition: background 0.2s;
+    }
+    .clickable-quote:hover { background: #e0e7ff; }
+
+    #placeholder { 
+      color: var(--text-muted); 
+      text-align: center; 
+      padding: 50px 30px; 
+      font-size: 14px; 
+      border: 2px dashed var(--border); 
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.5);
+    }
   </style>
 </head>
 <body>
   <div class="config-header">
-    <h2 class="config-title">🤖 AI Paper Review</h2>
-    <button id="toggleConfigBtn" style="background:none; border:none; color:#007bff; cursor:pointer; font-size: 12px; font-weight: 600;">⚙️ 설정</button>
+    <h2 class="config-title">Analysis Panel</h2>
+    <button id="toggleConfigBtn" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size: 13px; font-weight: 600;">Settings</button>
   </div>
   
   <div id="configContent" class="config-content">
     <div class="form-group">
-      <label>AI Model</label>
+      <label style="display: flex; justify-content: space-between; align-items: center;">
+        AI Model
+        <span id="explainSecurityBtn" style="color: var(--primary); cursor: pointer; text-transform: none; font-weight: 600; font-size: 11px;">Security Info</span>
+      </label>
       <select id="ai-selector">
         <option value="local">Local LLM</option>
         <option value="openai">OpenAI (GPT-4o)</option>
@@ -79,31 +263,31 @@
       <label>Gemini Key</label>
       <input type="password" id="gemini-key" placeholder="AIza...">
     </div>
-    <div style="display: flex; align-items: center; margin-bottom: 12px; gap: 8px;">
+    <div style="display: flex; align-items: center; margin-bottom: 16px; gap: 8px;">
       <input type="checkbox" id="dev-mode" style="width: auto; margin: 0;">
-      <label style="font-size: 12px; font-weight: bold; color: #495057; cursor: pointer;" for="dev-mode">개발자 모드 (Mocking)</label>
+      <label style="font-size: 13px; font-weight: 600; color: var(--text-main); cursor: pointer;" for="dev-mode">Developer Mode (Mocking)</label>
     </div>
     <div class="btn-group">
-      <button id="saveConfigBtn" class="secondary-btn">설정 저장</button>
-      <button id="clearHistoryBtn" class="danger-btn">기록 초기화</button>
+      <button id="saveConfigBtn" class="secondary-btn">Save Settings</button>
+      <button id="clearHistoryBtn" class="danger-btn">Clear History</button>
     </div>
-    <div id="statusMsg" style="color: #40c057; font-size: 11px; margin-top: 6px; text-align: center; height: 14px; font-weight: bold;"></div>
+    <div id="statusMsg" style="color: var(--success); font-size: 12px; margin-top: 10px; text-align: center; height: 14px; font-weight: bold;"></div>
   </div>
 
-  <button id="analyzeBtn" class="analyze-trigger">현재 문서 요약하기</button>
+  <button id="analyzeBtn" class="analyze-trigger">Analyze Document</button>
   
   <div id="analysisList">
-    <div id="placeholder" style="color: #adb5bd; text-align: center; padding: 40px 20px; font-size: 13px; border: 1px dashed #ced4da; border-radius: 8px;">
-      요약 버튼을 누르면 분석 결과가 여기에 표시됩니다.
+    <div id="placeholder">
+      Click the button above to start document analysis.
     </div>
   </div>
 
   <div id="sourceConsole">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-      <strong style="color: #e67700; font-size: 12px;">📝 원문 대조</strong>
-      <button id="closeConsoleBtn" style="border:none; background:none; cursor:pointer; font-size: 18px; color: #adb5bd;">&times;</button>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <strong style="color: var(--primary); font-size: 13px;">Source Context</strong>
+      <button id="closeConsoleBtn" style="border:none; background:none; cursor:pointer; font-size: 20px; color: var(--text-muted); line-height: 1;">&times;</button>
     </div>
-    <div id="sourceText" style="font-size: 12px; color: #495057; font-style: italic; line-height: 1.4;"></div>
+    <div id="sourceText" style="font-size: 13px; color: var(--text-main); font-style: italic; line-height: 1.5;"></div>
   </div>
 
   <script src="sidepanel.js"></script>

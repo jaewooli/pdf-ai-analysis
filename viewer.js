@@ -14,7 +14,7 @@ const openSidePanelBtn = document.getElementById('openSidePanelBtn');
 toggleSidebarBtn.addEventListener('click', () => {
   const isActive = sidebar.classList.toggle('active');
   toggleSidebarBtn.classList.toggle('active');
-  toggleSidebarBtn.textContent = isActive ? '📑 썸네일 숨기기' : '📑 썸네일 열기';
+  toggleSidebarBtn.textContent = isActive ? 'Hide Thumbnails' : 'Show Thumbnails';
 });
 
 // 1장/2장 보기 토글
@@ -61,7 +61,7 @@ async function extractTextWithCoords(page, pageNum) {
 // --- 2. 메인 렌더링 함수 (썸네일 생성 추가) ---
 async function renderPDF(url) {
   try {
-    viewerContainer.innerHTML = '<h3 style="color:white; margin-top:20px;">PDF를 불러오는 중입니다...</h3>';
+    viewerContainer.innerHTML = '<h3 style="margin-top:20px;">Loading PDF...</h3>';
     sidebar.innerHTML = ''; 
     
     pdfDocument = await pdfjsLib.getDocument(url).promise;
@@ -84,16 +84,14 @@ async function renderPDF(url) {
       canvas.height = viewport.height;
       const ctx = canvas.getContext('2d');
 
-      // 🚨 [여기가 핵심!] 실제 페이지 렌더링 로직
       await page.render({ canvasContext: ctx, viewport: viewport }).promise;
       pageContainer.appendChild(canvas);
 
-      // 🔥 [추가] 텍스트 레이어 생성 (비동기로 처리하여 메인 렌더링을 방해하지 않음)
       (async () => {
         try {
           const textLayerDiv = document.createElement('div');
           textLayerDiv.className = 'textLayer';
-          // [중요] 텍스트 레이어의 크기와 스케일 변수를 설정
+
           textLayerDiv.style.width = `${viewport.width}px`;
           textLayerDiv.style.height = `${viewport.height}px`;
 
@@ -106,7 +104,7 @@ async function renderPDF(url) {
 
           const textContent = await page.getTextContent();
 
-          // PDF.js v3+ / v5+ 지원: TextLayer 클래스 사용
+
           if (pdfjsLib.TextLayer) {
             const textLayer = new pdfjsLib.TextLayer({
               textContentSource: textContent,
@@ -116,7 +114,6 @@ async function renderPDF(url) {
             await textLayer.render();
             console.log(`Page ${pageNum} text layer rendered via TextLayer class.`);
           } else if (pdfjsLib.renderTextLayer) {
-            // 하위 호환성 (만약 옛날 방식을 쓴다면)
             await pdfjsLib.renderTextLayer({
               textContent: textContent,
               container: textLayerDiv,
@@ -131,12 +128,16 @@ async function renderPDF(url) {
 
       viewerContainer.appendChild(pageContainer);
 
-      // 2. 썸네일 생성 로직
-      const thumbScale = 180 / viewport.width; 
+      const thumbScale = 160 / viewport.width; 
       const thumbViewport = page.getViewport({ scale: thumbScale });
       const thumbContainer = document.createElement('div');
       thumbContainer.className = 'thumbnail-container';
+      thumbContainer.dataset.pageNumber = pageNum;
+      if (pageNum === 1) thumbContainer.classList.add('active');
       
+      const thumbWrapper = document.createElement('div');
+      thumbWrapper.className = 'thumbnail-wrapper';
+
       const thumbCanvas = document.createElement('canvas');
       thumbCanvas.className = 'thumbnail-canvas';
       thumbCanvas.width = thumbViewport.width;
@@ -144,27 +145,30 @@ async function renderPDF(url) {
       await page.render({ canvasContext: thumbCanvas.getContext('2d'), viewport: thumbViewport }).promise;
       
       const thumbLabel = document.createElement('div');
-      thumbLabel.textContent = `${pageNum} / ${pdfDocument.numPages}쪽`;
-      thumbContainer.appendChild(thumbCanvas);
+      thumbLabel.className = 'thumbnail-label';
+      thumbLabel.textContent = `${pageNum} / ${pdfDocument.numPages}`;
+      
+      thumbWrapper.appendChild(thumbCanvas);
+      thumbContainer.appendChild(thumbWrapper);
       thumbContainer.appendChild(thumbLabel);
       
       thumbContainer.addEventListener('click', () => { 
-        pageContainer.scrollIntoView({ behavior: 'smooth', block: 'start' }); 
+        pageContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        updateActiveThumbnail(pageNum);
       });
       sidebar.appendChild(thumbContainer);
 
-      // 3. 텍스트 데이터 추출
       const pageData = await extractTextWithCoords(page, pageNum);
       extractedDocumentData.push(...pageData);
     }
 
-    // 🔥 [핵심 2] 원본 데이터 Base64 추출 (이게 있어야 AI가 PDF를 봅니다)
+    
     const pdfData = await pdfDocument.getData();
     let binary = '';
     for (let i = 0; i < pdfData.byteLength; i++) { binary += String.fromCharCode(pdfData[i]); }
     globalPdfBase64 = window.btoa(binary);
 
-    // 🔥 [추가] 하이라이트 검색을 위한 인덱스 생성
+
     buildSearchIndex();
 
   } catch (error) {
@@ -172,14 +176,13 @@ async function renderPDF(url) {
   }
 }
 
-// 🔍 하이라이트 검색용 인덱스 생성 함수
+
 function buildSearchIndex() {
   normalizedFullText = "";
   charToItemMap = [];
 
   extractedDocumentData.forEach(item => {
-    // 1. Handle hyphenated line breaks: If item ends with a hyphen, it's likely a split word.
-    // We normalize by removing the hyphen only if it's at the end of the item.
+  
     let itemText = item.text;
     if (itemText.trim().endsWith('-')) {
       itemText = itemText.trim().slice(0, -1);
@@ -198,14 +201,12 @@ function buildSearchIndex() {
   console.log("Search Index built. Length:", normalizedFullText.length);
 }
 
-// 🔥 [핵심 3] 퍼지 매칭 하이라이트 (스마트 앵커 폴백)
 function drawExactHighlight(sourceText) {
   if (!sourceText) return;
   
   // Normalize target text: Remove hyphens that might have been part of line-breaks in the source
   const target = sourceText
-    .replace(/(\w)-\s+(\w)/g, '$1$2') // handle "anal- ysis" -> "analysis"
-    .normalize('NFKC')
+    .replace(/(\w)-\s+(\w)/g, '$1$2') 
     .toLowerCase()
     .replace(/[^a-z0-9가-힣]/g, '');
     
@@ -214,7 +215,6 @@ function drawExactHighlight(sourceText) {
   let startIndex = normalizedFullText.indexOf(target);
   let matchLength = target.length;
 
-  // 100% 일치가 없으면, 앞부분 20글자 + 뒷부분 20글자로 매칭 시도
   if (startIndex === -1 && target.length > 40) {
     const prefix = target.substring(0, 20);
     const suffix = target.substring(target.length - 20);
@@ -227,7 +227,7 @@ function drawExactHighlight(sourceText) {
   }
 
   if (startIndex === -1) {
-    alert("하이라이트 위치를 찾을 수 없습니다. (원문과 불일치)(원문: "+sourceText+")");
+    alert("Could not locate the highlight position. (Source text mismatch)");
     return;
   }
 
@@ -259,7 +259,6 @@ function drawExactHighlight(sourceText) {
         highlight.style.backgroundColor = 'rgba(255, 235, 59, 0.5)';
         pageContainer.appendChild(highlight);
 
-        // 첫 번째 페이지의 첫 번째 아이템으로 스크롤 이동
         if (index === 0 && itemIdx === 0) {
           highlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
@@ -270,9 +269,7 @@ function drawExactHighlight(sourceText) {
   });
 }
 
-// ==========================================
-// 메시지 통신 및 파일 변환 리스너
-// ==========================================
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'HIGHLIGHT_EXACT_TEXT') {
     drawExactHighlight(request.text);
@@ -280,7 +277,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   if (request.action === 'GET_DOCUMENT_DATA') {
     const optimizedData = mergeTextBlocks(extractedDocumentData);
-    let fileName = "알 수 없는 문서";
+    let fileName = "Unknown Document";
     try {
       if (window.fileUrl) {
         const url = new URL(window.fileUrl);
@@ -297,17 +294,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ base64: globalPdfBase64 });
   }
 });
-// ==========================================
-// 🚨 [가장 중요한 부분] 여기서부터 뷰어 렌더링이 시작됩니다!
-// ==========================================
-const urlParams = new URLSearchParams(window.location.search);
-// fileUrl은 상단에서 let이나 const로 선언되지 않도록 주의 (여기서 선언)
-window.fileUrl = urlParams.get('file'); // 글로벌로 빼서 XHR에서도 접근 가능하게 처리
 
+const urlParams = new URLSearchParams(window.location.search);
+window.fileUrl = urlParams.get('file'); 
 if (window.fileUrl) {
   renderPDF(window.fileUrl);
 } else {
-  viewerContainer.innerHTML = '<h3 style="color:red; margin-top:20px;">PDF 경로를 찾을 수 없습니다.</h3>';
+  viewerContainer.innerHTML = '<h3 style="color:red; margin-top:20px;">PDF path not found.</h3>';
 }
 
 function mergeTextBlocks(rawData) {
@@ -343,4 +336,23 @@ function mergeTextBlocks(rawData) {
     if (currentBlock) mergedData.push(currentBlock);
   });
   return mergedData;
+}
+
+// Update active thumbnail based on scroll position
+viewerContainer.addEventListener('scroll', () => {
+  const pages = document.querySelectorAll('.pdf-page-container');
+  let currentPage = 1;
+  pages.forEach(page => {
+    const rect = page.getBoundingClientRect();
+    if (rect.top < window.innerHeight / 2 && rect.bottom > window.innerHeight / 2) {
+      currentPage = parseInt(page.dataset.pageNumber);
+    }
+  });
+  updateActiveThumbnail(currentPage);
+}, { passive: true });
+
+function updateActiveThumbnail(pageNum) {
+  document.querySelectorAll('.thumbnail-container').forEach(thumb => {
+    thumb.classList.toggle('active', parseInt(thumb.dataset.pageNumber) === pageNum);
+  });
 }

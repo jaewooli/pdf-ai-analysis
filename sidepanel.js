@@ -37,27 +37,34 @@ document.addEventListener('DOMContentLoaded', () => {
       geminiApiKey: geminiKeyInput.value.trim() || '',
       devMode: devModeCheckbox.checked
     }, () => {
-      statusMsg.textContent = '✅ 저장 완료';
+      statusMsg.textContent = 'Settings Saved';
       setTimeout(() => { statusMsg.textContent = ''; }, 2000);
     });
   });
 
   clearHistoryBtn.addEventListener('click', () => {
-    if (confirm('모든 기록을 삭제하시겠습니까?')) {
+    if (confirm('Are you sure you want to clear all analysis history?')) {
       chrome.storage.local.get(null, (items) => {
         if (!items) return;
         const keysToRemove = Object.keys(items).filter(k => k.startsWith('analysis_'));
         if (keysToRemove.length > 0) {
           chrome.storage.local.remove(keysToRemove, () => {
-            document.getElementById('analysisList').innerHTML = '<div style="color:#adb5bd; text-align:center; padding:40px;">삭제 완료</div>';
+            document.getElementById('analysisList').innerHTML = '<div style="color:#adb5bd; text-align:center; padding:40px;">History Cleared</div>';
           });
         }
       });
     }
   });
 
+  document.getElementById('explainSecurityBtn').addEventListener('click', () => {
+    alert("Security Information:\nYour API keys are stored safely in your browser's local storage (chrome.storage.local). They are never sent to external servers except for direct communication with the AI providers.");
+  });
+
   document.getElementById('analyzeBtn').addEventListener('click', runAnalysis);
 });
+
+// Track URLs currently being analyzed
+const analyzingUrls = new Set();
 
 /**
  * Robustly find the active PDF viewer tab
@@ -74,80 +81,118 @@ async function getActiveViewerTab() {
 }
 
 async function runAnalysis() {
+  const tab = await getActiveViewerTab();
+  if (!tab || !tab.url) {
+    alert("Could not find a valid PDF viewer tab.\n\n1. Ensure the PDF is opened in our viewer.\n2. If it's a local file, enable 'Allow access to file URLs' in extension settings.");
+    return;
+  }
+  
+  const url = tab.url;
+  const isCurrentlyAnalyzing = await chrome.runtime.sendMessage({ action: 'IS_ANALYZING', url: url });
+  if (isCurrentlyAnalyzing?.analyzing || analyzingUrls.has(url)) {
+    alert("Analysis is already in progress for this document.");
+    return;
+  }
+
+  let timer = null;
   try {
-    const tab = await getActiveViewerTab();
-    if (!tab || !tab.url) {
-      alert("분석할 수 있는 PDF 화면을 찾을 수 없습니다.\n\n1. PDF가 우리 프로그램 전용 뷰어로 열려 있는지 확인해주세요.\n2. 로컬 파일(file://)인 경우, 확장 프로그램 설정에서 '파일 URL에 대한 액세스 허용'을 켜주어야 합니다.");
-      return;
-    }
-    const url = tab.url;
+    analyzingUrls.add(url);
     const tabId = tab.id;
     const cardId = getUrlId(url);
 
-    // Rollback: Removed collapseAllCards() here
+    // 1. Initial State before getting data
     renderCard(url, {
-      fileName: "분석 진행 중...",
-      firstResult: "### 분석 준비\n잠시만 기다려주세요...",
+      fileName: "Analyzing...",
+      firstResult: "### Preparation\nPlease wait while we process the document...",
       elapsed: 0
     }, true);
 
-    let elapsed = 0;
-    const timer = setInterval(() => {
-      elapsed++;
-      const timerSpan = document.querySelector(`[data-timer-url="${cardId}"]`);
-      if (timerSpan) timerSpan.textContent = `${elapsed}초`;
-    }, 1000);
-
     const textRes = await chrome.tabs.sendMessage(tabId, { action: 'GET_DOCUMENT_DATA' }).catch(e => null);
     if (!textRes) {
-      clearInterval(timer);
-      throw new Error("PDF 뷰어와 연결할 수 없습니다. 페이지를 새로고침 해주세요.");
+      throw new Error("Could not connect to PDF viewer. Please refresh the page.");
     }
 
-    const fileName = textRes.fileName || "알 수 없는 문서";
+    if (!analyzingUrls.has(url)) return;
+
+    // 2. Update with Actual Filename
+    const fileName = textRes.fileName || "Unknown Document";
+    renderCard(url, {
+      fileName: `Analyzing ${fileName}`,
+      firstResult: "### Preparation\nPlease wait while we process the document...",
+      elapsed: 0
+    }, true);
+
+    // Start Timer
+    let elapsed = 0;
+    timer = setInterval(() => {
+      elapsed++;
+      const timerSpan = document.querySelector(`[data-timer-url="${cardId}"]`);
+      if (timerSpan) timerSpan.textContent = `${elapsed}s`;
+    }, 1000);
+
     const fullText = (textRes.data && Array.isArray(textRes.data)) ? textRes.data.map(i => i.text).join(' ') : "";
     const fileRes = await chrome.tabs.sendMessage(tabId, { action: 'GET_PDF_FILE' }).catch(e => null);
     const pdfBase64 = fileRes?.base64 || null;
 
+    if (!analyzingUrls.has(url)) { clearInterval(timer); return; }
+
     const stage1Res = await chrome.runtime.sendMessage({
       action: 'FETCH_FIRST_ANALYSIS',
+      url: url,
       text: fullText,
       pdfBase64: pdfBase64
     }).catch(e => ({ error: e.message }));
 
-    if (stage1Res.error) throw new Error(stage1Res.error);
+    if (!analyzingUrls.has(url)) { clearInterval(timer); return; }
+    if (stage1Res.error) {
+      if (stage1Res.error === 'STOPPED') return;
+      throw new Error(stage1Res.error);
+    }
 
     const firstResult = stage1Res.result;
     const step1Data = { fileName, firstResult, elapsed, timestamp: Date.now() };
     chrome.storage.local.set({ [`analysis_${url}`]: step1Data });
     renderCard(url, step1Data, true);
 
+    if (!analyzingUrls.has(url)) { clearInterval(timer); return; }
+
     const stage2Res = await chrome.runtime.sendMessage({
       action: 'FETCH_FINAL_SUMMARY',
+      url: url,
       firstAnalysis: firstResult,
       text: fullText,
       pdfBase64: pdfBase64
     }).catch(e => ({ error: e.message }));
 
-    if (stage2Res.error) throw new Error(stage2Res.error);
+    if (timer) clearInterval(timer);
+    if (!analyzingUrls.has(url)) return;
+    if (stage2Res.error) {
+      if (stage2Res.error === 'STOPPED') return;
+      throw new Error(stage2Res.error);
+    }
 
     const finalResult = stage2Res.result;
-    clearInterval(timer);
-    
     const finalData = { fileName, firstResult, finalResult, elapsed, timestamp: Date.now() };
     chrome.storage.local.set({ [`analysis_${url}`]: finalData });
+    
+    // FINAL RENDER: This will remove the stop button because analyzingUrls.delete(url) happens in finally
+    analyzingUrls.delete(url); 
     renderCard(url, finalData, true);
 
   } catch (err) {
     console.error("Analysis Crash:", err);
+    if (timer) clearInterval(timer);
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tabs && tabs[0]) {
       renderCard(tabs[0].url, {
-        fileName: "오류 발생",
-        firstResult: `❌ 분석 중 오류가 발생했습니다: ${err.message}`,
+        fileName: "Error Occurred",
+        firstResult: `Analysis failed: ${err.message}`,
         elapsed: 0
       }, true);
     }
+  } finally {
+    if (timer) clearInterval(timer);
+    analyzingUrls.delete(url);
   }
 }
 
@@ -179,25 +224,46 @@ function renderCard(url, data, isExpanded = true) {
   }
 
   const isFinal = !!data.finalResult;
-  const content = data.finalResult || data.firstResult || "분석 정보를 불러올 수 없습니다.";
+  const isAnalyzing = analyzingUrls.has(url);
+  const content = data.finalResult || data.firstResult || "No analysis data found.";
 
   card.innerHTML = `
     <div class="card-header" id="h_${cardId}" style="cursor: pointer;">
-      <span class="card-title">📄 ${data.fileName || "문서 분석"}</span>
+      <span class="card-title">${data.fileName || "Document Analysis"}</span>
       <div style="display:flex; align-items:center;">
-        <span class="card-timer" data-timer-url="${cardId}">${data.elapsed || 0}초</span>
-        <span class="toggle-icon">${isExpanded ? '▼' : '▶'}</span>
+        <span class="card-timer" data-timer-url="${cardId}">${data.elapsed || 0}s</span>
+        ${isAnalyzing ? `<button class="stop-btn" data-url="${url}">Stop</button>` : ''}
+        <span class="toggle-icon" style="margin-left:8px;">${isExpanded ? 'Collapse' : 'Expand'}</span>
       </div>
     </div>
     <div class="card-body" id="b_${cardId}" style="display: ${isExpanded ? 'block' : 'none'};">
       <div class="status-badge ${isFinal ? 'status-done' : 'status-loading'}">
-        ${isFinal ? '최종 완료' : '진행 중...'}
+        ${isFinal ? 'Completed' : 'Second Analysis Processing'}
       </div>
       <div class="markdown-body">
         ${processMarkdown(content)}
       </div>
     </div>
   `;
+
+  // Stop button handler
+  const stopBtn = card.querySelector('.stop-btn');
+  if (stopBtn) {
+    stopBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (confirm('Are you sure you want to stop the analysis?')) {
+        const urlToStop = stopBtn.getAttribute('data-url');
+        analyzingUrls.delete(urlToStop);
+        chrome.runtime.sendMessage({ action: 'STOP_ANALYSIS', url: urlToStop });
+        
+        // Update UI to show stopped status
+        renderCard(urlToStop, {
+          ...data,
+          firstResult: (data.firstResult || "") + "\n\nAnalysis stopped by user."
+        }, true);
+      }
+    };
+  }
 
   // Rollback: Simplified toggle (no auto-collapse of others)
   const header = document.getElementById(`h_${cardId}`);
@@ -209,7 +275,7 @@ function renderCard(url, data, isExpanded = true) {
       if (body && icon) {
         const isHidden = body.style.display === 'none';
         body.style.display = isHidden ? 'block' : 'none';
-        icon.textContent = isHidden ? '▼' : '▶';
+        icon.textContent = isHidden ? 'Collapse' : 'Expand';
       }
     };
   }
@@ -249,27 +315,29 @@ async function loadAllHistory() {
 }
 
 function processMarkdown(raw) {
-  if (!raw || typeof raw !== 'string') return "결과가 비어있습니다.";
+  if (!raw || typeof raw !== 'string') return "No content to display.";
   let html = raw
-    .replace(/\(\*\*원문\s*근거\*\*\s*:\s*"(.*?)"\)/g, (m, q) => {
+    .replace(/\(\*\*Source\*\*\s*:\s*"(.*?)"\)/g, (m, q) => {
       if (!q) return "";
+      // Handle potential multiple sentences by just cleaning whitespace and keeping the text together
       let clean = q.replace(/(\w)-\s*\n\s*(\w)/g, '$1$2').replace(/\s+/g, ' ').trim();
       let safe = clean.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-      return `<span class="clickable-quote" data-quote="${safe}">🔍</span>`;
+      return `<span class="clickable-quote" data-quote="${safe}">Source</span>`;
     })
-    .replace(/(?:-\s*)?\*\*원문\s*근거\*\*\s*:\s*([\s\S]*?)(?=\n\s*- |\n\s*#|$)/g, (m, q) => {
+    .replace(/(?:-\s*)?\*\*Source\*\*\s*:\s*([\s\S]*?)(?=\n\s*- |\n\s*#|$)/g, (m, q) => {
       if (!q) return "";
       let clean = q.replace(/(\w)-\s*\n\s*(\w)/g, '$1$2').replace(/\s+/g, ' ').trim();
       let safe = clean.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-      return `<div style="margin-top:10px;"><span class="clickable-quote" data-quote="${safe}">🔍 원문 하이라이트</span></div>`;
+      return `<div style="margin-top:10px;"><span class="clickable-quote" data-quote="${safe}">View Source Context</span></div>`;
     });
+
 
   html = html
     .replace(/^###\s+(.*$)/gim, '<h3>$1</h3>')
     .replace(/^##\s+(.*$)/gim, '<h2>$1</h2>')
     .replace(/^#\s+(.*$)/gim, '<h1>$1</h1>')
     .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
-    .replace(/^\s*-\s+(.*$)/gim, '<div class="list-item"><span class="list-dot">•</span><span>$1</span></div>')
+    .replace(/^\s*-\s+(.*$)/gim, '<div class="list-item"><span class="list-dot">&bull;</span><span>$1</span></div>')
     .replace(/\n{2,}/g, '\n')
     .replace(/\n/gim, '<br>')
     .replace(/```markdown|```/g, '');
