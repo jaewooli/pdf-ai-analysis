@@ -2,17 +2,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const toggleConfigBtn = document.getElementById('toggleConfigBtn');
   const configContent = document.getElementById('configContent');
   const saveConfigBtn = document.getElementById('saveConfigBtn');
+  const clearHistoryBtn = document.getElementById('clearHistoryBtn');
   
   const aiSelector = document.getElementById('ai-selector');
   const openaiKeyInput = document.getElementById('openai-key');
   const deepseekKeyInput = document.getElementById('deepseek-key');
   const geminiKeyInput = document.getElementById('gemini-key');
   const devModeCheckbox = document.getElementById('dev-mode');
-  const statusSpan = document.getElementById('status');
+  const statusMsg = document.getElementById('statusMsg');
 
-  const analysisList = document.getElementById('analysisList');
-
+  // 1. Load Settings Safely
   chrome.storage.local.get(['selectedAI', 'openaiApiKey', 'deepseekApiKey', 'geminiApiKey', 'devMode'], (result) => {
+    if (!result) return;
     if (result.selectedAI) aiSelector.value = result.selectedAI;
     if (result.openaiApiKey) openaiKeyInput.value = result.openaiApiKey;
     if (result.deepseekApiKey) deepseekKeyInput.value = result.deepseekApiKey;
@@ -20,327 +21,281 @@ document.addEventListener('DOMContentLoaded', () => {
     if (result.devMode !== undefined) devModeCheckbox.checked = result.devMode;
   });
 
-  // 🔥 [Multi-Document] Load all analyses on start
-  loadAllAnalyses();
+  // 2. Load All History
+  loadAllHistory();
 
-  aiSelector.addEventListener('change', (e) => {
-    chrome.storage.local.set({ selectedAI: e.target.value });
-  });
-
+  // --- Listeners ---
   toggleConfigBtn.addEventListener('click', () => {
     configContent.classList.toggle('active');
   });
 
   saveConfigBtn.addEventListener('click', () => {
     chrome.storage.local.set({
-      selectedAI: aiSelector.value,
-      openaiApiKey: openaiKeyInput.value.trim(),
-      deepseekApiKey: deepseekKeyInput.value.trim(),
-      geminiApiKey: geminiKeyInput.value.trim(),
+      selectedAI: aiSelector.value || 'local',
+      openaiApiKey: openaiKeyInput.value.trim() || '',
+      deepseekApiKey: deepseekKeyInput.value.trim() || '',
+      geminiApiKey: geminiKeyInput.value.trim() || '',
       devMode: devModeCheckbox.checked
     }, () => {
-      statusSpan.textContent = '저장됨!';
-      setTimeout(() => { statusSpan.textContent = ''; }, 2000);
+      statusMsg.textContent = '✅ 저장 완료';
+      setTimeout(() => { statusMsg.textContent = ''; }, 2000);
     });
   });
+
+  clearHistoryBtn.addEventListener('click', () => {
+    if (confirm('모든 기록을 삭제하시겠습니까?')) {
+      chrome.storage.local.get(null, (items) => {
+        if (!items) return;
+        const keysToRemove = Object.keys(items).filter(k => k.startsWith('analysis_'));
+        if (keysToRemove.length > 0) {
+          chrome.storage.local.remove(keysToRemove, () => {
+            document.getElementById('analysisList').innerHTML = '<div style="color:#adb5bd; text-align:center; padding:40px;">삭제 완료</div>';
+          });
+        }
+      });
+    }
+  });
+
+  document.getElementById('analyzeBtn').addEventListener('click', runAnalysis);
 });
 
 /**
- * Loads all saved analyses and renders them as collapsed cards,
- * except for the one matching the current tab.
+ * Robustly find the active PDF viewer tab
  */
-function loadAllAnalyses() {
-  chrome.storage.local.get(null, (allData) => {
-    const analysisKeys = Object.keys(allData).filter(key => key.startsWith('analysis_'));
-    const analysisList = document.getElementById('analysisList');
-    
-    // Clear list to avoid duplicates
-    analysisList.innerHTML = '';
-
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const currentUrl = tabs && tabs.length > 0 ? tabs[0].url : null;
-
-      // Sort by timestamp (newest first)
-      const sortedKeys = analysisKeys.sort((a, b) => (allData[b].timestamp || 0) - (allData[a].timestamp || 0));
-
-      sortedKeys.forEach(key => {
-        const url = key.replace('analysis_', '');
-        const data = allData[key];
-        // Ensure data is valid
-        if (data) {
-           const isCurrent = url === currentUrl;
-           renderAnalysisCard(url, data, isCurrent);
-        }
-      });
-    });
-  });
+async function getActiveViewerTab() {
+  let [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab || !tab.url || !tab.url.includes('viewer.html')) {
+    const allTabs = await chrome.tabs.query({ url: chrome.runtime.getURL('viewer.html*') });
+    if (allTabs.length > 0) {
+      tab = allTabs[0];
+    }
+  }
+  return tab;
 }
 
-function renderAnalysisCard(url, data, isExpanded = false) {
-  const analysisList = document.getElementById('analysisList');
-  const cardId = `card_${btoa(url).substring(0, 16).replace(/[/+=]/g, '')}`;
+async function runAnalysis() {
+  try {
+    const tab = await getActiveViewerTab();
+    if (!tab || !tab.url) {
+      alert("분석할 수 있는 PDF 화면을 찾을 수 없습니다.\n\n1. PDF가 우리 프로그램 전용 뷰어로 열려 있는지 확인해주세요.\n2. 로컬 파일(file://)인 경우, 확장 프로그램 설정에서 '파일 URL에 대한 액세스 허용'을 켜주어야 합니다.");
+      return;
+    }
+    const url = tab.url;
+    const tabId = tab.id;
+    const cardId = getUrlId(url);
+
+    // Rollback: Removed collapseAllCards() here
+    renderCard(url, {
+      fileName: "분석 진행 중...",
+      firstResult: "### 분석 준비\n잠시만 기다려주세요...",
+      elapsed: 0
+    }, true);
+
+    let elapsed = 0;
+    const timer = setInterval(() => {
+      elapsed++;
+      const timerSpan = document.querySelector(`[data-timer-url="${cardId}"]`);
+      if (timerSpan) timerSpan.textContent = `${elapsed}초`;
+    }, 1000);
+
+    const textRes = await chrome.tabs.sendMessage(tabId, { action: 'GET_DOCUMENT_DATA' }).catch(e => null);
+    if (!textRes) {
+      clearInterval(timer);
+      throw new Error("PDF 뷰어와 연결할 수 없습니다. 페이지를 새로고침 해주세요.");
+    }
+
+    const fileName = textRes.fileName || "알 수 없는 문서";
+    const fullText = (textRes.data && Array.isArray(textRes.data)) ? textRes.data.map(i => i.text).join(' ') : "";
+    const fileRes = await chrome.tabs.sendMessage(tabId, { action: 'GET_PDF_FILE' }).catch(e => null);
+    const pdfBase64 = fileRes?.base64 || null;
+
+    const stage1Res = await chrome.runtime.sendMessage({
+      action: 'FETCH_FIRST_ANALYSIS',
+      text: fullText,
+      pdfBase64: pdfBase64
+    }).catch(e => ({ error: e.message }));
+
+    if (stage1Res.error) throw new Error(stage1Res.error);
+
+    const firstResult = stage1Res.result;
+    const step1Data = { fileName, firstResult, elapsed, timestamp: Date.now() };
+    chrome.storage.local.set({ [`analysis_${url}`]: step1Data });
+    renderCard(url, step1Data, true);
+
+    const stage2Res = await chrome.runtime.sendMessage({
+      action: 'FETCH_FINAL_SUMMARY',
+      firstAnalysis: firstResult,
+      text: fullText,
+      pdfBase64: pdfBase64
+    }).catch(e => ({ error: e.message }));
+
+    if (stage2Res.error) throw new Error(stage2Res.error);
+
+    const finalResult = stage2Res.result;
+    clearInterval(timer);
+    
+    const finalData = { fileName, firstResult, finalResult, elapsed, timestamp: Date.now() };
+    chrome.storage.local.set({ [`analysis_${url}`]: finalData });
+    renderCard(url, finalData, true);
+
+  } catch (err) {
+    console.error("Analysis Crash:", err);
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs && tabs[0]) {
+      renderCard(tabs[0].url, {
+        fileName: "오류 발생",
+        firstResult: `❌ 분석 중 오류가 발생했습니다: ${err.message}`,
+        elapsed: 0
+      }, true);
+    }
+  }
+}
+
+function getUrlId(url) {
+  if (!url || typeof url !== 'string') return 'c-default';
+  let hash = 0;
+  for (let i = 0; i < url.length; i++) {
+    hash = ((hash << 5) - hash) + url.charCodeAt(i);
+    hash |= 0;
+  }
+  return 'c' + Math.abs(hash).toString(36);
+}
+
+function renderCard(url, data, isExpanded = true) {
+  if (!url) return;
+  const list = document.getElementById('analysisList');
+  if (!list) return;
+
+  const cardId = getUrlId(url);
+  let card = document.getElementById(cardId);
   
-  let existingCard = document.getElementById(cardId);
-  if (!existingCard) {
-    existingCard = document.createElement('div');
-    existingCard.id = cardId;
-    existingCard.className = 'card';
-    existingCard.style.padding = '0';
-    existingCard.style.overflow = 'hidden';
-    existingCard.style.border = '1px solid #ddd';
-    existingCard.style.marginBottom = '10px';
-    // 🔥 New cards always go to the top
-    analysisList.prepend(existingCard);
-  } else if (isExpanded) {
-    // 🔥 If updating an existing card and expanding it, move it to top
-    analysisList.prepend(existingCard);
+  if (!card) {
+    const placeholder = document.getElementById('placeholder');
+    if (placeholder) placeholder.remove();
+    card = document.createElement('div');
+    card.id = cardId;
+    card.className = 'result-card';
+    list.prepend(card);
   }
 
-  const contentHtml = data.finalResult || data.firstResult || "분석 대기 중...";
   const isFinal = !!data.finalResult;
+  const content = data.finalResult || data.firstResult || "분석 정보를 불러올 수 없습니다.";
 
-  existingCard.innerHTML = `
-    <div class="card-header" style="background: ${isExpanded ? '#007bff' : '#f0f0f0'}; color: ${isExpanded ? 'white' : '#333'}; padding: 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 13px;">
-      <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px;">
-        📄 ${data.fileName || "알 수 없는 문서"}
+  card.innerHTML = `
+    <div class="card-header" id="h_${cardId}" style="cursor: pointer;">
+      <span class="card-title">📄 ${data.fileName || "문서 분석"}</span>
+      <div style="display:flex; align-items:center;">
+        <span class="card-timer" data-timer-url="${cardId}">${data.elapsed || 0}초</span>
+        <span class="toggle-icon">${isExpanded ? '▼' : '▶'}</span>
       </div>
-      <span class="toggle-icon">${isExpanded ? '▼' : '▶'}</span>
     </div>
-    <div class="card-body" style="display: ${isExpanded ? 'block' : 'none'}; padding: 12px; max-height: 500px; overflow-y: auto; background: white;">
-      <div style="font-size: 11px; margin-bottom: 8px; color: ${isFinal ? '#28a745' : '#856404'}; font-weight: bold;">
-        ${isFinal ? '✅ 최종 분석 완료' : '⚡ 1차 요약 완료'} (${data.elapsed || 0}초)
+    <div class="card-body" id="b_${cardId}" style="display: ${isExpanded ? 'block' : 'none'};">
+      <div class="status-badge ${isFinal ? 'status-done' : 'status-loading'}">
+        ${isFinal ? '최종 완료' : '진행 중...'}
       </div>
       <div class="markdown-body">
-        ${processMarkdown(contentHtml)}
+        ${processMarkdown(content)}
       </div>
     </div>
   `;
 
-  const header = existingCard.querySelector('.card-header');
-  header.onclick = () => {
-    const body = existingCard.querySelector('.card-body');
-    const icon = existingCard.querySelector('.toggle-icon');
-    const isOpening = body.style.display === 'none';
-    
-    // Collapse all others if opening this one
-    if (isOpening) {
-      document.querySelectorAll('.card-body').forEach(el => el.style.display = 'none');
-      document.querySelectorAll('.card-header').forEach(el => {
-        el.style.background = '#f0f0f0';
-        el.style.color = '#333';
-      });
-      document.querySelectorAll('.toggle-icon').forEach(el => el.textContent = '▶');
-    }
-
-    body.style.display = isOpening ? 'block' : 'none';
-    header.style.background = isOpening ? '#007bff' : '#f0f0f0';
-    header.style.color = isOpening ? 'white' : '#333';
-    icon.textContent = isOpening ? '▼' : '▶';
-  };
+  // Rollback: Simplified toggle (no auto-collapse of others)
+  const header = document.getElementById(`h_${cardId}`);
+  if (header) {
+    header.onclick = (e) => {
+      e.stopPropagation();
+      const body = document.getElementById(`b_${cardId}`);
+      const icon = header.querySelector('.toggle-icon');
+      if (body && icon) {
+        const isHidden = body.style.display === 'none';
+        body.style.display = isHidden ? 'block' : 'none';
+        icon.textContent = isHidden ? '▼' : '▶';
+      }
+    };
+  }
 
   if (isExpanded) {
-    existingCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 
-document.getElementById('analyzeBtn').addEventListener('click', () => {
-  let elapsedSeconds = 0;
+/**
+ * Loads all saved analyses and renders them.
+ * The current tab's result is expanded, others are collapsed.
+ */
+async function loadAllHistory() {
+  const tab = await getActiveViewerTab();
+  const currentUrl = tab?.url || null;
 
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (!tabs || tabs.length === 0) return;
-
-    const currentTabId = tabs[0].id;
-    const currentUrl = tabs[0].url;
-
-    // 1. Get placeholder data to show "Analyzing..."
-    const initialData = {
-      fileName: "분석 중...",
-      firstResult: "문서를 분석 중입니다. 잠시만 기다려주세요...",
-      elapsed: 0,
-      timestamp: Date.now()
-    };
-
-    // Collapse all others
-    document.querySelectorAll('.card-body').forEach(el => el.style.display = 'none');
-    document.querySelectorAll('.card-header').forEach(el => {
-      el.style.background = '#f0f0f0';
-      el.style.color = '#333';
-    });
-    document.querySelectorAll('.toggle-icon').forEach(el => el.textContent = '▶');
-
-    renderAnalysisCard(currentUrl, initialData, true);
-
-    const timerInterval = setInterval(() => {
-      elapsedSeconds++;
-    }, 1000);
-
-    // 1. 문서 텍스트 추출
-    chrome.tabs.sendMessage(
-      currentTabId,
-      { action: 'GET_DOCUMENT_DATA' },
-      (textResponse) => {
-
-        const currentFileName = textResponse?.fileName || "알 수 없는 문서";
-
-        let fullText =
-          textResponse && textResponse.data
-            ? textResponse.data.map(item => item.text).join(' ')
-            : "";
-
-        // 2. PDF 파일 추출
-        chrome.tabs.sendMessage(
-          currentTabId,
-          { action: 'GET_PDF_FILE' },
-          (fileResponse) => {
-
-            const pdfBase64 =
-              fileResponse && fileResponse.base64
-                ? fileResponse.base64
-                : null;
-
-            chrome.runtime.sendMessage(
-              {
-                action: 'FETCH_FIRST_ANALYSIS',
-                text: fullText,
-                pdfBase64: pdfBase64
-              },
-              (firstResponse) => {
-
-                if (!firstResponse || firstResponse.error) {
-                  clearInterval(timerInterval);
-                  const errorData = {
-                    fileName: currentFileName,
-                    firstResult: `❌ 1차 분석 에러: ${firstResponse?.error || "통신 실패"}`,
-                    elapsed: elapsedSeconds,
-                    timestamp: Date.now()
-                  };
-                  renderAnalysisCard(currentUrl, errorData, true);
-                  return;
-                }
-
-                const firstAnalysisResult = firstResponse.result;
-                const step1Data = {
-                  fileName: currentFileName,
-                  firstResult: firstAnalysisResult,
-                  elapsed: elapsedSeconds,
-                  timestamp: Date.now()
-                };
-                
-                chrome.storage.local.set({ [`analysis_${currentUrl}`]: step1Data });
-                renderAnalysisCard(currentUrl, step1Data, true);
-                
-                chrome.runtime.sendMessage(
-                  {
-                    action: 'FETCH_FINAL_SUMMARY',
-                    firstAnalysis: firstAnalysisResult,
-                    text: fullText,
-                    pdfBase64: pdfBase64
-                  },
-                  (secondResponse) => {
-
-                    clearInterval(timerInterval);
-
-                    if (!secondResponse || secondResponse.error) {
-                      const errorData2 = {
-                        fileName: currentFileName,
-                        firstResult: firstAnalysisResult,
-                        finalResult: `❌ 2차 분석 에러: ${secondResponse?.error || "통신 실패"}`,
-                        elapsed: elapsedSeconds,
-                        timestamp: Date.now()
-                      };
-                      renderAnalysisCard(currentUrl, errorData2, true);
-                      return;
-                    }
-
-                    const rawResult = secondResponse.result;  
-                    const step2Data = {
-                      fileName: currentFileName,
-                      firstResult: firstAnalysisResult,
-                      finalResult: rawResult,
-                      elapsed: elapsedSeconds,
-                      timestamp: Date.now()
-                    };
-
-                    chrome.storage.local.set({ [`analysis_${currentUrl}`]: step2Data });
-                    renderAnalysisCard(currentUrl, step2Data, true);
-                  }
-                );
-              }
-            );
-          }
-        );
-      }
-    );
-  });
-});
-
-// 🔥 클릭 이벤트: 돋보기 버튼을 누르면 원문 텍스트를 뷰어로 전송하고 콘솔에 표시
-document.getElementById('analysisList').addEventListener('click', (e) => {
-  if (e.target.classList.contains('clickable-quote')) {
-    const quoteText = e.target.getAttribute('data-quote');
+  chrome.storage.local.get(null, (allData) => {
+    if (!allData) return;
     
-    if (quoteText) {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (!tabs || tabs.length === 0) return;
-        chrome.tabs.sendMessage(tabs[0].id, { 
-          action: 'HIGHLIGHT_EXACT_TEXT', 
-          text: quoteText 
-        });
-      });
+    const analysisKeys = Object.keys(allData).filter(k => k.startsWith('analysis_'));
+    if (analysisKeys.length === 0) return;
 
-      const sourceConsole = document.getElementById('sourceConsole');
-      const sourceTextElement = document.getElementById('sourceText');
-      if (sourceConsole && sourceTextElement) {
-        sourceTextElement.textContent = `"${quoteText}"`;
-        sourceConsole.style.display = 'block';
-        document.getElementById('analysisList').style.marginBottom = '160px';
+    // Sort by timestamp: Oldest first because we use prepend() in renderCard
+    // (Oldest prepended first -> Newest prepended last = Newest at top)
+    const sortedKeys = analysisKeys.sort((a, b) => (allData[a].timestamp || 0) - (allData[b].timestamp || 0));
+
+    sortedKeys.forEach(key => {
+      const url = key.replace('analysis_', '');
+      const data = allData[key];
+      if (data) {
+        const isCurrent = (url === currentUrl);
+        renderCard(url, data, isCurrent);
       }
-    }
-  }
-});
+    });
+  });
+}
 
-// 🔥 콘솔 닫기 버튼 이벤트
-document.getElementById('closeConsoleBtn').addEventListener('click', () => {
-  document.getElementById('sourceConsole').style.display = 'none';
-  document.getElementById('analysisList').style.marginBottom = '0px';
-});
+function processMarkdown(raw) {
+  if (!raw || typeof raw !== 'string') return "결과가 비어있습니다.";
+  let html = raw
+    .replace(/\(\*\*원문\s*근거\*\*\s*:\s*"(.*?)"\)/g, (m, q) => {
+      if (!q) return "";
+      let clean = q.replace(/(\w)-\s*\n\s*(\w)/g, '$1$2').replace(/\s+/g, ' ').trim();
+      let safe = clean.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      return `<span class="clickable-quote" data-quote="${safe}">🔍</span>`;
+    })
+    .replace(/(?:-\s*)?\*\*원문\s*근거\*\*\s*:\s*([\s\S]*?)(?=\n\s*- |\n\s*#|$)/g, (m, q) => {
+      if (!q) return "";
+      let clean = q.replace(/(\w)-\s*\n\s*(\w)/g, '$1$2').replace(/\s+/g, ' ').trim();
+      let safe = clean.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      return `<div style="margin-top:10px;"><span class="clickable-quote" data-quote="${safe}">🔍 원문 하이라이트</span></div>`;
+    });
 
-
-function processMarkdown(rawResult) {
-  if (!rawResult) return "";
-
-  // 1. 인라인 원문 근거 처리 ( (**원문 근거**: "...") )
-  let processedResult = rawResult.replace(
-    /\(\*\*원문\s*근거\*\*\s*:\s*"(.*?)"\)/g,
-    (match, quoteText) => {
-      if (!quoteText || quoteText.trim().length === 0) return "";
-      let cleanQuote = quoteText.replace(/(\w)-\s*\n\s*(\w)/g, '$1$2').replace(/\s+/g, ' ').trim();
-      let safeQuote = cleanQuote.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-      return `<span class="clickable-quote" data-quote="${safeQuote}" title="${safeQuote}">🔍</span>`;
-    }
-  );
-
-  // 2. 블록형 원문 근거 처리
-  processedResult = processedResult.replace(
-    /(?:-\s*)?\*\*원문\s*근거\*\*\s*:\s*([\s\S]*?)(?=\n\s*- |\n\s*#|$)/g,
-    (match, quoteText) => {
-      if (!quoteText || quoteText.trim().length === 0) return "";
-      let cleanQuote = quoteText.replace(/(\w)-\s*\n\s*(\w)/g, '$1$2').replace(/\s+/g, ' ').trim();
-      let safeQuote = cleanQuote.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-      return `<div style="margin-top:4px;"><span class="clickable-quote" data-quote="${safeQuote}">🔍 원문 하이라이트</span></div>`;
-    }
-  );
-
-  processedResult = processedResult
+  html = html
     .replace(/^###\s+(.*$)/gim, '<h3>$1</h3>')
     .replace(/^##\s+(.*$)/gim, '<h2>$1</h2>')
     .replace(/^#\s+(.*$)/gim, '<h1>$1</h1>')
     .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
-    .replace(/^\s*-\s+(.*$)/gim, '<div class="list-item">• $1</div>')
+    .replace(/^\s*-\s+(.*$)/gim, '<div class="list-item"><span class="list-dot">•</span><span>$1</span></div>')
     .replace(/\n{2,}/g, '\n')
     .replace(/\n/gim, '<br>')
-    .replace(/```markdown/, '')
-    .replace(/```/, '');
+    .replace(/```markdown|```/g, '');
+  return html;
+}
 
-  return processedResult;
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.classList.contains('clickable-quote')) {
+    const quote = e.target.getAttribute('data-quote');
+    if (!quote) return;
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs && tabs[0]) chrome.tabs.sendMessage(tabs[0].id, { action: 'HIGHLIGHT_EXACT_TEXT', text: quote }).catch(e => null);
+    });
+    const consoleBox = document.getElementById('sourceConsole');
+    const textBox = document.getElementById('sourceText');
+    if (consoleBox && textBox) {
+      textBox.textContent = `"${quote}"`;
+      consoleBox.style.display = 'block';
+    }
+  }
+});
+
+const closeBtn = document.getElementById('closeConsoleBtn');
+if (closeBtn) {
+  closeBtn.onclick = () => {
+    const consoleBox = document.getElementById('sourceConsole');
+    if (consoleBox) consoleBox.style.display = 'none';
+  };
 }

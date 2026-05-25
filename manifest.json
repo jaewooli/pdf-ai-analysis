@@ -5,6 +5,7 @@
   "description": "PDF 요약 및 원문 하이라이팅 확장 프로그램",
   "permissions": [
     "activeTab",
+    "tabs",
     "sidePanel",
     "scripting",
     "storage",
@@ -14,7 +15,8 @@
     "http://localhost:11434/*",
     "https://api.openai.com/*",
     "https://generativelanguage.googleapis.com/*",
-    "file:///*"
+    "file:///*",
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
