@@ -238,7 +238,7 @@ function renderCard(url, data, isExpanded = true) {
     </div>
     <div class="card-body" id="b_${cardId}" style="display: ${isExpanded ? 'block' : 'none'};">
       <div class="status-badge ${isFinal ? 'status-done' : 'status-loading'}">
-        ${isFinal ? 'Completed' : 'Second Analysis Processing'}
+        ${isFinal ? 'Completed' : 'Processing'}
       </div>
       <div class="markdown-body">
         ${processMarkdown(content)}
