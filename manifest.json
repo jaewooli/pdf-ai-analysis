@@ -2,12 +2,10 @@
   "manifest_version": 3,
   "name": "PDF AI Analyzer Pro",
   "version": "1.0",
-  "description": "PDF 요약 및 원문 하이라이팅 확장 프로그램",
+  "description": "Professional PDF AI Analysis Tool",
   "permissions": [
-    "activeTab",
     "tabs",
     "sidePanel",
-    "scripting",
     "storage",
     "webNavigation" 
   ],
@@ -15,14 +13,14 @@
     "http://localhost:11434/*",
     "https://api.openai.com/*",
     "https://generativelanguage.googleapis.com/*",
-    "file:///*",
+    "https://api.deepseek.com/*",
     "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "분석 패널 열기",
+    "default_title": "Open Analysis Panel",
     "default_popup": "popup.html"
   },
   "side_panel": {
