@@ -178,8 +178,14 @@ function buildSearchIndex() {
   charToItemMap = [];
 
   extractedDocumentData.forEach(item => {
-    // 텍스트 정규화 (공백 제거, 소문자화, 특수문자 제거)
-    const normalizedItemText = item.text
+    // 1. Handle hyphenated line breaks: If item ends with a hyphen, it's likely a split word.
+    // We normalize by removing the hyphen only if it's at the end of the item.
+    let itemText = item.text;
+    if (itemText.trim().endsWith('-')) {
+      itemText = itemText.trim().slice(0, -1);
+    }
+
+    const normalizedItemText = itemText
       .normalize('NFKC')
       .toLowerCase()
       .replace(/[^a-z0-9가-힣]/g, '');
@@ -194,8 +200,15 @@ function buildSearchIndex() {
 
 // 🔥 [핵심 3] 퍼지 매칭 하이라이트 (스마트 앵커 폴백)
 function drawExactHighlight(sourceText) {
-  // 동일하게 정규화
-  const target = sourceText.normalize('NFKC').toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
+  if (!sourceText) return;
+  
+  // Normalize target text: Remove hyphens that might have been part of line-breaks in the source
+  const target = sourceText
+    .replace(/(\w)-\s+(\w)/g, '$1$2') // handle "anal- ysis" -> "analysis"
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣]/g, '');
+    
   if (!target) return;
 
   let startIndex = normalizedFullText.indexOf(target);
@@ -267,7 +280,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   if (request.action === 'GET_DOCUMENT_DATA') {
     const optimizedData = mergeTextBlocks(extractedDocumentData);
-    sendResponse({ data: optimizedData });
+    let fileName = "알 수 없는 문서";
+    try {
+      if (window.fileUrl) {
+        const url = new URL(window.fileUrl);
+        fileName = decodeURIComponent(url.pathname.split('/').pop());
+      }
+    } catch (e) {}
+    sendResponse({ 
+      data: optimizedData,
+      fileName: fileName
+    });
   }
 
   if (request.action === 'GET_PDF_FILE') {

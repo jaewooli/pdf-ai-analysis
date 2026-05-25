@@ -52,6 +52,7 @@
       <select id="ai-selector">
         <option value="local">Local LM (노트북)</option>
         <option value="openai">OpenAI (GPT-4o)</option>
+        <option value="deepseek">DeepSeek (V3/R1)</option>
         <option value="gemini">Google Gemini</option>
       </select>
     </div>
@@ -60,8 +61,16 @@
       <input type="password" id="openai-key" placeholder="sk-...">
     </div>
     <div class="form-group">
+      <label>DeepSeek API Key</label>
+      <input type="password" id="deepseek-key" placeholder="sk-...">
+    </div>
+    <div class="form-group">
       <label>Gemini API Key</label>
       <input type="password" id="gemini-key" placeholder="AIza...">
+    </div>
+    <div style="display: flex; align-items: center; margin-bottom: 10px;">
+      <label style="font-size: 12px; font-weight: bold; margin-right: 10px;">개발자 모드 (Mocking)</label>
+      <input type="checkbox" id="dev-mode" style="width: auto;">
     </div>
     <div style="display: flex; align-items: center;">
       <button id="saveConfigBtn" style="padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">저장</button>
@@ -71,10 +80,16 @@
 
   <button id="analyzeBtn" class="action-btn">현재 문서 요약하기</button>
   
-  <div id="summaryArea">
-    <div class="card" style="color: #666; text-align: center;">요약 버튼을 눌러주세요.</div>
+  <div id="summaryContainer" class="card" style="display: none; padding: 0; overflow: hidden; border: 1px solid #007bff;">
+    <div id="summaryHeader" style="background: #007bff; color: white; padding: 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 14px;">
+      <span>📊 분석 결과</span>
+      <span id="summaryToggleIcon">▼</span>
+    </div>
+    <div id="summaryArea" style="padding: 12px; max-height: 60vh; overflow-y: auto; background: white;">
+      <div style="color: #666; text-align: center;">요약 버튼을 눌러주세요.</div>
+    </div>
   </div>
-
+  
   <!-- 🔥 원문 근거 미리보기 창 -->
   <div id="sourceConsole" style="display:none; position: fixed; bottom: 0; left: 0; right: 0; background: #fffdf5; padding: 12px; border-top: 2px solid #ffeeba; font-size: 12px; z-index: 1000; box-shadow: 0 -4px 10px rgba(0,0,0,0.1); max-height: 150px; overflow-y: auto;">
     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px;">

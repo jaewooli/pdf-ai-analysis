@@ -85,9 +85,10 @@ async function firstAiRequest(textToAnalyze, pdfBase64) {
   const systemPrompt =
     await loadSystemPrompt("instruction1.txt");
 
+  // 1차 분석 속도를 위해 PDF 파일 전송을 생략하고 텍스트만 보냄
   return await fetchBySelectedAI(
     textToAnalyze,
-    pdfBase64,
+    null, // pdfBase64 제거
     systemPrompt
   );
 }
@@ -99,8 +100,8 @@ async function secondAiRequest(firstAnalysis, fullText, pdfBase64) {
   const { selectedAI = 'local' } =
     await chrome.storage.local.get('selectedAI');
 
-  // Gemini는 PDF를 직접 볼 수 있으므로 1차 분석 결과만 텍스트로 전달
-  // 그 외 모델은 원본 텍스트를 함께 전달해야 근거를 찾을 수 있음
+  // Only Gemini can natively "see" the PDF. 
+  // For other models (including OpenAI via Chat API), we must send the extracted text.
   let inputForAI = firstAnalysis;
   if (selectedAI !== 'gemini') {
     inputForAI = `[1차 분석 결과]\n${firstAnalysis}\n\n[원본 논문 텍스트]\n${fullText}`;
@@ -133,6 +134,13 @@ async function fetchBySelectedAI(
     case 'openai':
 
       return await callOpenAI(
+        text,
+        systemPrompt
+      );
+
+    case 'deepseek':
+
+      return await callDeepSeek(
         text,
         systemPrompt
       );
@@ -200,7 +208,6 @@ async function callGemini(text, pdfBase64, systemPrompt) {
   };
 
   if (pdfBase64) {
-    // 텍스트(1차 분석 결과 등)가 있으면 함께 전송
     if (text) {
       payload.contents[0].parts.push({ text: text });
     }
@@ -221,7 +228,14 @@ async function callGemini(text, pdfBase64, systemPrompt) {
   });
   
   const data = await response.json();
-  if (data.error) throw new Error(data.error.message || "Gemini 통신 에러");
+  
+  if (data.error) {
+    let errorMsg = data.error.message || "Gemini 통신 에러";
+    if (response.status === 429) {
+      errorMsg = "Gemini API 호출 한도를 초과했습니다. " + errorMsg;
+    }
+    throw new Error(errorMsg);
+  }
   
   if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts.length > 0) {
     return data.candidates[0].content.parts[0].text;
@@ -246,5 +260,32 @@ async function loadSystemPrompt(filename) {
 
     throw new Error(`${filename} 파일 로드 실패`);
   }
+}
+
+async function callDeepSeek(text, systemPrompt) {
+  const { deepseekApiKey } = await chrome.storage.local.get('deepseekApiKey');
+  if (!deepseekApiKey) throw new Error("DeepSeek API 키가 설정되지 않았습니다.");
+
+  const response = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${deepseekApiKey}`
+    },
+    body: JSON.stringify({
+      model: "deepseek-chat", 
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `다음 텍스트를 분석해줘:\n${text}` }
+      ],
+      stream: false
+    })
+  });
+  
+  const data = await response.json();
+  if (data.error || !response.ok) {
+    throw new Error(data.error?.message || `DeepSeek 에러 (${response.status})`);
+  }
+  return data.choices[0].message.content;
 }
 
