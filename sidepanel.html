@@ -165,6 +165,25 @@
     .status-done { background: #ecfdf5; color: var(--success); }
     .status-error { background: #fef2f2; color: var(--danger); }
 
+    .download-btn {
+      background: white;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .download-btn:hover {
+      background: var(--primary);
+      color: white;
+    }
+
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }

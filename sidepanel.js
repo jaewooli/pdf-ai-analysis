@@ -237,14 +237,106 @@ function renderCard(url, data, isExpanded = true) {
       </div>
     </div>
     <div class="card-body" id="b_${cardId}" style="display: ${isExpanded ? 'block' : 'none'};">
-      <div class="status-badge ${isFinal ? 'status-done' : 'status-loading'}">
-        ${isFinal ? 'Completed' : 'Processing'}
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <div class="status-badge ${isFinal ? 'status-done' : 'status-loading'}" style="margin-bottom: 0;">
+          ${isFinal ? 'Completed' : 'Processing'}
+        </div>
+        ${isFinal ? `
+        <div style="display: flex; gap: 8px;">
+          <button class="download-btn download-full" title="Download Full Markdown (including sources)">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Full .md
+          </button>
+          <button class="download-btn download-clean" title="Download Clean Markdown (no sources)">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Clean .md
+          </button>
+          <button class="download-btn download-pdf" title="Download Original PDF">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Original PDF
+          </button>
+        </div>` : ''}
       </div>
       <div class="markdown-body">
         ${processMarkdown(content)}
       </div>
     </div>
   `;
+
+  // Download button handlers
+  const downloadFullBtn = card.querySelector('.download-full');
+  const downloadCleanBtn = card.querySelector('.download-clean');
+  const downloadPdfBtn = card.querySelector('.download-pdf');
+
+  const triggerDownload = (text, suffix, type = 'text/markdown') => {
+    const blob = new Blob([text], { type });
+    const urlObj = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = urlObj;
+    const baseName = (data.fileName || 'analysis').replace(/\.[^/.]+$/, "");
+    a.download = `${baseName}_${suffix}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(urlObj);
+  };
+
+  if (downloadFullBtn) {
+    downloadFullBtn.onclick = (e) => {
+      e.stopPropagation();
+      triggerDownload(content, 'full.md');
+    };
+  }
+
+  if (downloadCleanBtn) {
+    downloadCleanBtn.onclick = (e) => {
+      e.stopPropagation();
+      // Remove source references
+      const cleanContent = content
+        .replace(/\s*\(\*\*Source\*\*\s*:\s*".*?"\)/g, '')
+        .replace(/(?:-\s*)?\*\*Source\*\*\s*:\s*([\s\S]*?)(?=\n\s*- |\n\s*#|$)/g, '');
+      triggerDownload(cleanContent.trim(), 'clean.md');
+    };
+  }
+
+  if (downloadPdfBtn) {
+    downloadPdfBtn.onclick = async (e) => {
+      e.stopPropagation();
+      
+      const tab = await getActiveViewerTab();
+      if (!tab || tab.url !== url) {
+        alert("Original PDF download is only available when the document is currently open in the viewer.");
+        return;
+      }
+
+      try {
+        const fileRes = await chrome.tabs.sendMessage(tab.id, { action: 'GET_PDF_FILE' }).catch(e => null);
+        if (fileRes && fileRes.base64) {
+          const byteCharacters = atob(fileRes.base64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: 'application/pdf' });
+          
+          const urlObj = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = urlObj;
+          a.download = data.fileName || "document.pdf";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(urlObj);
+        } else {
+          alert("Could not retrieve the PDF file from the viewer.");
+        }
+      } catch (err) {
+        console.error("PDF Download Error:", err);
+        alert("Failed to download PDF: " + err.message);
+      }
+    };
+  }
 
   // Stop button handler
   const stopBtn = card.querySelector('.stop-btn');
