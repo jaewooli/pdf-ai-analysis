@@ -26,7 +26,14 @@ Depending on your settings, analysis data is sent to:
 ## 5. User Rights and Controls
 You have the full right to access, modify, or delete your API keys and analysis results at any time via the Extension's settings panel.
 
-## 6. Contact Information
+## 6. Permissions and Their Use
+To provide our services, the Extension requires the following permissions:
+- **`tabs` & `webNavigation`**: Used to identify PDF files in your browser tabs and provide the analysis interface.
+- **`<all_urls>`**: Necessary to detect and access PDF documents across various websites for analysis.
+- **`storage`**: Used to securely save your API keys and analysis settings locally on your device.
+- **`sidePanel`**: Used to provide a seamless user interface for AI analysis alongside your documents.
+
+## 7. Contact Information
 For any privacy-related inquiries, please contact us at:
 - **Developer Email**: jaeu1341@naver.com
 - **Last Updated**: May 29, 2026

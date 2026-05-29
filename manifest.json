@@ -25,11 +25,5 @@
   },
   "side_panel": {
     "default_path": "sidepanel.html"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["viewer.html", "lib/*", "instruction1.txt", "instruction2.txt"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  }
 }
